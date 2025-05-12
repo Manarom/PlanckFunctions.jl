@@ -1,5 +1,5 @@
-# Planck function and its derivatives all tempeatures should be in Kelvins, all wavelengths in μm
-module Planck
+# PlanckFunctions and its derivatives all tempeatures should be in Kelvins, all wavelengths in μm
+module PlanckFunctions
     export  Dₜibb!,
             ∫ibbₗ,
             Tₖ, 

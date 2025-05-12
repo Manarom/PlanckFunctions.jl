@@ -3,7 +3,13 @@ uuid = "56edaee7-e77f-43d7-994d-8307b8de0a62"
 authors = ["Roman Mironov"]
 version = "1.0.0-DEV"
 
+[deps]
+MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
 [compat]
+MKL = "0.8.0"
+StaticArrays = "1.9.13"
 julia = "1.6.7"
 
 [extras]

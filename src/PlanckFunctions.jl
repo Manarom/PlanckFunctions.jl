@@ -9,11 +9,12 @@ module PlanckFunctions
             ∇ₜibb!, 
             ∇²ₜibb,
             ∇²ₜibb!,
+            ∇²ₗibb,
             a₁₂₃!,
             power,
             band_power
              # first on is for matrix version Dibb! is simplified
-    using StaticArrays,MKL # static arrays are used for a mutable c=onstant
+    using MKL # static arrays are used for a mutable c=onstant
     const ħ = 1.054_571_817E-34::Float64 # J*s
     const C₁   = 1.191043E8::Float64#(1.191043E8,"W*μm*/m²*sr"," ","Risch","2016"),
     const C₂ = 14387.752::Float64#(14387.752,"μm**K"," ","Risch","2016"),
@@ -29,13 +30,13 @@ function  a₁₂₃(λ::Float64,T::Float64)
     a3 = exp(a1)*a2#exp(a)/expm1(a)
     return (a1,a2,a3)
 end
-function _a₁₂₃!(λ::Float64,T::Float64) # filling constant vector 
+#=function _a₁₂₃!(λ::Float64,T::Float64) # filling constant vector 
     # instance version of constants filling
     a[1]=C₂/(λ*T)
     a[2] = 1.0/expm1(a[1])#1/expm1(a)
     a[3] = exp(a[1])*a[2]#exp(a)/expm1(a)
     return a
-end
+end=#
 """
     a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Float64)
 
@@ -155,10 +156,7 @@ function ibb!(i::AbstractVector,λ::AbstractVector,amat::AbstractMatrix)::Nothin
         T - temperature in Kelvins
 """
     function ∇ₜibb(λ,T)
-        prod(_a₁₂₃!(λ,T))*C₁/(T*λ^5)
-    end
-    function ∇ₜibb(λ::AbstractVector,T)
-        return C₁*_a₁₂₃!.(λ,T)./(T*λ.^5)
+        prod(a₁₂₃(λ,T))*C₁/(T*λ^5)
     end
 
     """
@@ -205,7 +203,7 @@ function ∇ₜibb!(g::AbstractMatrix,λ::AbstractVector,T::AbstractVector)
         # instance version of Planck function first derivative with respect to T
         #a = zeros(3)
         for (iii,l) in enumerate(λ) 
-            g[iii] = prod(_a₁₂₃!(l,T))*C₁/(T*l^5)
+            g[iii] = prod(a₁₂₃(l,T))*C₁/(T*l^5)
         end 
     end
     # this version uses Vector for T because in this way the handle to the optimization varibale is implemented
@@ -282,7 +280,7 @@ function ∇ₜibb!(g::AbstractVector,T, amat::AbstractMatrix,i::AbstractVector)
               T - tmperature in Kelvins         
 """
     function ∇²ₜibb(λ,T)
-        _a₁₂₃!(λ,T)#ibb = C₁*a[2]*(l^-5)
+        a=a₁₂₃(λ,T)#ibb = C₁*a[2]*(l^-5)
         (a[1]*(2a[3]-1.0)-2.0)*a[1]*a[2]*a[3]*C₁/((T^3)*λ^5)
     end
 
@@ -306,7 +304,7 @@ function ∇ₜibb!(g::AbstractVector,T, amat::AbstractMatrix,i::AbstractVector)
 function ∇²ₜibb!(h::AbstractVector{Float64},λ::AbstractVector{Float64},T::Float64)# secpnd derivative for the fixed value of temperature
         # instance version of Planck function second derivative with respect to T
         for (iii,l) in enumerate(λ) 
-            _a₁₂₃!(l,T) # ibb = C₁*a[2]*(l^-5)         
+            a=a₁₂₃(λ,T) # ibb = C₁*a[2]*(l^-5)         
             h[iii] = (a[1]*(2.0*a[3]-1.0)-2.0)*a[1]*a[2]*a[3]*C₁/((T^2)*l^5)
             # a₂*a₃*a₁*[a₁*(2*a₃ - 1))-2]*(C₁/(λ⁵*T²))
         end 
@@ -332,7 +330,7 @@ function ∇²ₜibb!(h::AbstractVector{Float64},λ::AbstractVector{Float64},T::
 function ∇²ₜibb!(h::AbstractMatrix{Float64},λ::AbstractVector{Float64},T::AbstractVector{Float64})
         for (jjj,t) in enumerate(T)
             for (iii,l) in enumerate(λ) 
-                _a₁₂₃!(l,t) # ibb = C₁*a[2]*(l^-5)         
+                a=a₁₂₃(λ,T) # ibb = C₁*a[2]*(l^-5)         
                 h[iii,jjj] = (a[1]*(2a[3]-1.0)-2.0)*a[1]*a[2]*a[3]*C₁/((t^2)*l^5) 
                 # d²Ibb/dT² = C₁*a₂*a₃*a₁*(1/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2] 
             end
@@ -439,8 +437,8 @@ function ∇²ₜibb!(h::AbstractVector{Float64},T::Float64,amat::AbstractMatrix
     function ∇ₗibb(λ,T)
         # first derivative of Planck function with respect to wavelength
         #double a = C2/(lam*T);
-        _a₁₂₃!(λ,T)
-        (a[1]/λ)*(a[3]-5/λ)*(C₁*a[2]*(λ^-5)) #(C₁*a₁₂₃(λ,T)[2])*λ^-5
+        a=a₁₂₃(λ,T)
+        return (a[1]/λ)*(a[3]-5/λ)*(C₁*a[2]*(λ^-5)) #(C₁*a₁₂₃(λ,T)[2])*λ^-5
     end
     """
     ∇²ₗibb(λ,T)
@@ -454,8 +452,8 @@ function ∇²ₜibb!(h::AbstractVector{Float64},T::Float64,amat::AbstractMatrix
 function  ∇²ₗibb(λ,T)
         # second derivative of Planck function with respect to wavelength
         #local a,e2,e3
-        _a₁₂₃!(λ,T)
-        C₁*a[2]*(a[1]*a[3]*(2a[1]*a[3]-a[1]-12)+30.0)/(λ^7)
+        a=a₁₂₃(λ,T)
+        return C₁*a[2]*(a[1]*a[3]*(2a[1]*a[3]-a[1]-12)+30.0)/(λ^7)
     end
     """
     Dₗibb(λ,T)
@@ -471,7 +469,7 @@ function  ∇²ₗibb(λ,T)
 function Dₗibb(λ,T)
         # methods returns PLanck function and its derivatives with respect to the wavelength
         # output is a tuple with (Planckfunction, Its first derivative with respect to the wavelength, Its second derivative with respect to the wavelength)
-        _a₁₂₃!(λ,T)
+        a = a₁₂₃(λ,T)
         return (
             C₁*a[2]*((1/λ)^5),  # Planck function
             (C₁*a[2])*λ^-5,(a[1]/λ)*(a[3]-5/λ)*(C₁*a[2])*λ^-5, # first derivative
@@ -485,7 +483,7 @@ function Dₗibb(λ,T)
         d2i = fill(0.0,length(λ), length(T))
         for (jjj,t) in enumerate(T)
             for (iii,l) in enumerate(λ) 
-                _a₁₂₃!(l,t)
+                a = a₁₂₃(l,t)
                 i[iii,jjj] = C₁*a[2]*(l^-5)
                 d1i[iii,jjj] = (a[1]/l)*(a[3]-5/l)*i[iii,jjj]
                 d2i[iii,jjj] = (i[iii,jjj]/(l^2))*(a[1]*a[3]*(2a[1]*a[3]-a[1]-12.0)+30.0)
@@ -536,7 +534,7 @@ function power(T)
         # check if any of the output elements are ignored
         #for (iii,l) in enumerate(λ) 
         for (iii,l) in enumerate(λ) 
-            _a₁₂₃!(l,T) #this function mutates global variable
+            a = a₁₂₃(l,T) #this function mutates global variable
             input_tuple[1][iii] = C₁*a[2]*(l^-5)   
             input_tuple[2][iii] = a[1]*a[3]*input_tuple[1][iii]/T #a[1]*a[2]*a[3]*C₁/(T*l^5)
             input_tuple[3][iii] = (a[1]*(2a[3]-1.0) -2.0)*input_tuple[2][iii]/T# = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] 
@@ -549,7 +547,7 @@ function power(T)
         # check if any of the output elements are ignored
         #for (iii,l) in enumerate(λ) 
         for (iii,l) in enumerate(λ) 
-            _a₁₂₃!(l,T) #this function mutates global variable
+            a = a₁₂₃(l,T) #this function mutates global variable
             input_tuple[2][iii] = a[1]*a[3]*C₁*a[2]*(l^-5)/T #a[1]*a[2]*a[3]*C₁/(T*l^5)
             input_tuple[3][iii] = (a[1]*(2a[3]-1.0) -2.0)*input_tuple[2][iii]/T# = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] 
         end
@@ -581,7 +579,7 @@ function power(T)
         # check if any of the output elements are ignored
         for (jjj,t) in enumerate(T)
             for (iii,l) in enumerate(λ) 
-                _a₁₂₃!(l,t) 
+                a = a₁₂₃(l,t) 
                 input_tuple[1][iii,jjj] = C₁*a[2]*(l^-5)
                 input_tuple[2][iii,jjj] = a[1]*a[3]*input_tuple[1][iii,jjj]/t #a[1]*a[2]*a[3]*C₁/(T*l^5)
                 input_tuple[3][iii,jjj] = (a[1]*(2a[3]-1.0) -2.0)*input_tuple[2][iii,jjj]/t#(a[1]*(2a[3]-1)-2)*a[1]*a[2]*a[3]*C₁/((T^3)*l^5)
@@ -635,7 +633,7 @@ function Dₜibb(λ::AbstractVector,T::AbstractVector)
                  = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] =#
         for (jjj,t) in enumerate(T)
             for (iii,l) in enumerate(λ) 
-                _a₁₂₃!(l,t)
+                a = a₁₂₃(l,t)
                 i[iii,jjj] = C₁*a[2]*(l^-5)
                 d1i[iii,jjj] = a[1]*a[3]*i[iii,jjj]/t #a[1]*a[2]*a[3]*C₁/(T*l^5)
                 d2i[iii,jjj] = (a[1]*(2a[3]-1.0) -2.0)*d1i[iii,jjj]/t#(a[1]*(2a[3]-1)-2)*a[1]*a[2]*a[3]*C₁/((T^3)*l^5)
@@ -689,14 +687,15 @@ function ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
             if λₗ==0.0# integration from zero to fixed wavelength
                 n=1
                 ϵ=tol*100
-                sum=0
-                a = _a₁₂₃!(λᵣ,T)[1];
+                summation=0.0
+                #a = _a₁₂₃!(λᵣ,T)[1];
+                a = C₂/(λᵣ*T)
                 while  (ϵ>tol)&&(n<1e4) 
                     etan = a*n
-                    sum+=(exp(-etan)/n)*(etan*(etan*(etan + 3) + 6) + 6)/(n^4)
+                    summation+=(exp(-etan)/n)*(etan*(etan*(etan + 3.0) + 6.0) + 6.0)/(n^4)
                     n+=1;
                 end
-                return 15*sum/(pi^4)
+                return 15*summation/(pi^4)
             else# both wavelength resions are limited 
                 return ∫ibbₗ(T,λᵣ=λᵣ) - ∫ibbₗ(T,λᵣ=λₗ)
             end

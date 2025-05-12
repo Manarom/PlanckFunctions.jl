@@ -17,7 +17,7 @@ macro bind(def, element)
 end
 
 # ╔═╡ c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
-using StaticArrays, 
+using StaticArrays,
 	PlutoUI, Plots, 
 	Optimization,
 	OptimizationOptimJL,BenchmarkTools, 
@@ -46,7 +46,10 @@ begin# we need the project structrue inside the notebook
 end
 
 # ╔═╡ 77e9ee5b-b7f5-4216-8745-ca0286ab9024
-includet(joinpath(src_path,"PlanckFunctions.jl")) # the package file is includet using Revise methods, thus the code of the main file can be modified
+include(joinpath(src_path,"PlanckFunctions.jl")) # the package file is includet using Revise methods, thus the code of the main file can be modified
+
+# ╔═╡ 309a7c96-bc35-4e3b-b7d5-5fabd550e37d
+names(Main)
 
 # ╔═╡ 27ca1398-96ab-4d24-9c6d-63e02da49a94
 import .PlanckFunctions as PL
@@ -2428,6 +2431,7 @@ version = "1.8.1+0"
 # ╠═fc6d97d3-3775-42d2-a991-09d875b0dd38
 # ╠═c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
 # ╠═77e9ee5b-b7f5-4216-8745-ca0286ab9024
+# ╠═309a7c96-bc35-4e3b-b7d5-5fabd550e37d
 # ╠═27ca1398-96ab-4d24-9c6d-63e02da49a94
 # ╟─9e047346-b39e-4179-8f8a-bb1188941606
 # ╟─7098ee9a-1dc9-43fb-b554-35d87174fc64

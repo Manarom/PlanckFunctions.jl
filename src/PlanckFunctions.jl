@@ -21,7 +21,7 @@ module PlanckFunctions
     const C₄ = 4.09567E-12::Float64#(4.09567E-12,"W/m^2*μm*sr*K^5"," ", "Risch","2016"),
     const σ  = 5.670400E-8::Float64 #(5.670400E-8,"W/(m²*K⁴)"," ", "Risch","2016"),
     const Tₖ = 273.15::Float64 #(273.15,"K"," ", "Risch","2016");
-    const a = SizedVector{3,Float64}([0.0; 0.0; 0.0]) # intermediate vector
+    #const a = SizedVector{3,Float64}([0.0; 0.0; 0.0]) # intermediate vector
 #const a = [0.0; 0.0; 0.0]
 function  a₁₂₃(λ::Float64,T::Float64)
     a1=C₂/(λ*T)

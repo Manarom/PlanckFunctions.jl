@@ -13,7 +13,6 @@ total_radiance - total radiance in the whole spectral range, [W/(m²⋅sr)]
 peak_wavelength  - wavelength of Planck function maximum, [μm]
 peak_spectral_radiance - spectral radiance at the maximum wavelength, [W/(m²⋅sr⋅μm)]
 band_radiance - radiance within the spectral band, [W/(m²⋅sr)]
-
 """
 @kwdef struct BenchmarkData
     temperature # Kelvins
@@ -28,7 +27,7 @@ end
 """
     read_temperature_data(tag)
 
-Functions to read benchmark data spectrum from the default testing data folder
+    Functions to read benchmark data spectrum from the default testing data folder
 """
 function read_temperature_data(tag;folder = spectral_data_folder)
     data = readdlm(joinpath(folder,tag),',')
@@ -73,7 +72,7 @@ const benchmark_data = Dict(
 """
     testing_data(tag::String)
 
-returns benchmark data for specified tag
+    returns benchmark data for specified tag
 """
 function testing_data(tag::String)
     return benchmark_data[tag]

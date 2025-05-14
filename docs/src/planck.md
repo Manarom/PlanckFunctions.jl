@@ -2,5 +2,5 @@
 
 ```@autodocs
     Modules = [PlanckFunctions]
-    Order   = [:function, :type]
+    Order   = [:const,:function]
 ```

@@ -1,6 +1,6 @@
 using PlanckFunctions
 using Test,LinearAlgebra,Statistics
-include(joinpath(@__DIR__,"tests data","testing_data.jl")) # TestingData.benchmark_data
+include(joinpath(@__DIR__,"tests data","TestingData.jl")) # TestingData.benchmark_data
 #=
 temperature # Kelvins
 lower # lower wavelength limit μm
@@ -14,18 +14,22 @@ spectrum #
 
 @testset "PlanckFunctions.jl" begin
     # Write your tests here.
-    for d in TestingData.benchmark_data #iterating over data for various temperatures
-        point = d[2]
+    for point in values(TestingData.benchmark_data) #iterating over data for various temperatures
         @show T = point.temperature
         λₗ = point.lower #lower wavelength
         λᵣ = point.upper #upper wavelength
         sp = point.spectrum 
-        @test PlanckFunctions.power(T) ≈ point.total_radiance rtol=1e-4 # total radiance (possible due to some difference in Stefan constant )
-        @test PlanckFunctions.λₘ(T) ≈ point.peak_wavelength rtol=1e-6 # peak wavelength
+        # total radiance test
+        @test PlanckFunctions.power(T) ≈ point.total_radiance rtol=1e-4 # (possible due to some difference in Stefan constant there is a discrepancy)
+        #peak wavelength test
+        @test PlanckFunctions.λₘ(T) ≈ point.peak_wavelength rtol=1e-6 
+        #simple Planck function
         @test PlanckFunctions.ibb(PlanckFunctions.λₘ(T),T) ≈ point.peak_spectral_radiance rtol=1e-6
+        #testing the in-band radiance
         @test band_power(T,λₗ =λₗ ,λᵣ =λᵣ ) ≈ point.band_radiance rtol=1e-4
-        @show points_number = size(sp,1)
-        n = norm(ibb.(sp[:,1],T) .-sp[:,2])/points_number
+        # testing least-square difference between calculated spectra
+        points_number = size(sp,1)
+        n = sqrt(sum(i->i^2, ibb.(sp[:,1],T) .-sp[:,2]))/points_number
         @test n ≈ 0 atol=1e-2
     end
 end

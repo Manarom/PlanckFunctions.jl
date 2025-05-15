@@ -1,11 +1,19 @@
 # this testing data was obtained using blackbody calculator 
 # https://www.opticsthewebsite.com/OpticsCalculators
 module TestingData
+export BenchmarkData,benchmark_data,read_temperature_data,temperatures
+const citation1 = raw"Berger, Chris G. 'Blackbody Calculator', Optics: The Website, https://www.opticsthewebsite.com/OpticsCalculators . Accessed on 5/14/2025"
+"""
+This module contains some  `hardcoded` data obtained from $(citation1) 
+
+"""
+TestingData
+
 using DelimitedFiles
 const spectral_data_folder = joinpath(@__DIR__(),"spectra")
-"""
-Structure for external data was obtained using https://www.opticsthewebsite.com/OpticsCalculators blackbody calculator
-    
+
+"""   
+
 temperature  - BB temperature, [K]
 lower - lower wavelength limit of the band, [μm]
 upper - upper wavelength limit of the band, [μm] 
@@ -13,6 +21,7 @@ total_radiance - total radiance in the whole spectral range, [W/(m²⋅sr)]
 peak_wavelength  - wavelength of Planck function maximum, [μm]
 peak_spectral_radiance - spectral radiance at the maximum wavelength, [W/(m²⋅sr⋅μm)]
 band_radiance - radiance within the spectral band, [W/(m²⋅sr)]
+
 """
 @kwdef struct BenchmarkData
     temperature # Kelvins
@@ -36,7 +45,13 @@ function read_temperature_data(tag;folder = spectral_data_folder)
     # by 1e4 to convert units to [W/(m²⋅sr⋅μm)] (deault units in PlanckFunctions)
     return data
 end
+"""
+The data for testing was obtained from
 
+$(citation1)
+   
+
+"""
 const benchmark_data = Dict(
 "300"=>BenchmarkData(temperature = 300.0,
                 lower=0.5,upper = 30.0,
@@ -76,6 +91,14 @@ const benchmark_data = Dict(
 """
 function testing_data(tag::String)
     return benchmark_data[tag]
+end
+"""
+    temperatures()
+
+Returns numerical array of all temperatures in benchmark
+"""
+function temperatures()
+    return [b.temperature for b in values(benchmark_data)]
 end
 
 end

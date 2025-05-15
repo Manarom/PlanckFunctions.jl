@@ -1,6 +1,6 @@
 push!(LOAD_PATH,"../src/")
-#include("../src/PlanckFunctions.jl")
-using Documenter,PlanckFunctions
+include("../test/tests data/TestingData.jl")
+using Documenter,PlanckFunctions,.TestingData
 mathengine = Documenter.MathJax3()
 makedocs(
         sitename = "PlanckFunctions.jl",
@@ -12,7 +12,8 @@ makedocs(
                 "Examples"=>["Examples" =>"pluto_tests_git.md"
                 ]
                 "Modules" => [
-                    "PlanckFunctions" =>"planck.md"
+                    "PlanckFunctions" =>"PlanckFunctions.md"
+                    "TestingData"=>"TestingData.md"
                  ] 
                ]#
 			   )

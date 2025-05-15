@@ -16,7 +16,11 @@ module PlanckFunctions
             planck_averaged,
             planck_averaged_attenuation,
             rosseland_averaged_attenuation,
-            a₁₂₃
+            a₁₂₃,
+            ∇ₜ,
+            ∇²ₜ,
+            ∇ₗ,
+            ∇²ₗ
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
@@ -100,7 +104,7 @@ function  a₁₂₃(λ,T)
     a1=C₂/(λ*T)
     a2 = 1/expm1(a1)#1/eaxpm1(a)
     a3 = exp(a1)*a2#exp(a)/expm1(a)
-    return (a1,a2,a3)
+    return isnan(a3) ? (a1,a2,0.0) : (a1,a2,a3)
 end
 """
     a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Float64)
@@ -221,7 +225,7 @@ function ibb!(i::AbstractVector,λ::AbstractVector,amat::AbstractMatrix)::Nothin
         T - temperature in Kelvins
 """
     function ∇ₜibb(λ,T)
-        prod(a₁₂₃(λ,T))*C₁/(T*λ^5)
+        return prod(a₁₂₃(λ,T))*C₁/(T*λ^5)
     end
 
     """
@@ -472,7 +476,7 @@ function ∇²ₜibb!(h::AbstractVector{Float64},T::Float64,amat::AbstractMatrix
 
     αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ)⁻¹  
 """
-rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = _average(α,λ,T,∇ₜibb,inv)
+rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(α,λ,T,∇ₜibb,inv)
 
 """
     planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
@@ -482,7 +486,7 @@ rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
 
     αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ)⁻¹  
 """
-planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = _average(α,λ,T,ibb,inv) #identity
+planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(α,λ,T,ibb,inv) #identity
 
 """
     planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number)
@@ -493,29 +497,49 @@ planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = 
 
     Can be used for example to evaluate the integral emissiovity from measured spectral emissivity
 """
-planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = _average(x,λ,T,ibb,identity)
+planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x,λ,T,ibb,identity)
 """
-    _average(x::AbstractVector, λ::AbstractVector,T,f::Union{typeof(ibb),typeof(∇ₜibb)},fx::Function=inv)
+    weighted_average(α::AbstractVector, λ::AbstractVector,T,g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},f::Function=identity)
 
     Generic function to evaluate the averaged value of some `fx` function of variable `x` dependent on wavelength `λ` 
-    for temperature `T`. Uses simple trapezoidal method to perform the integration.
+    for temperature `T`. Uses linear approximation for the discrete variable and square polynomial 
+    for the g function 
 
-    xᵣ = fx(∫fx(x)f(λ,T)dλ), the default value of fx is inv
+    xᵣ = f(∫f(x)g(λ,T)dλ), the default value of f is inv, e.g. if f = inv:
+    xᵣ = 1/(∫g(λ,T)/x(λ)dλ)
 """
-function _average(x::AbstractVector, λ::AbstractVector,T,f::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},fx::Function=inv)
-    @assert length(λ)==length(x)
+function weighted_average(α::AbstractVector, λ::AbstractVector,T,g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},f::Function=identity)
+    @assert length(λ)==length(α)
     s = 0.0
     sn = 0.0
-    norm = maximum(l->f(l,T),λ)
-    for i in eachindex(x)[begin:end-1]
-        fx_val = (fx(x[i]) + fx(x[i+1]))/2
-        lcentre = (λ[i] + λ[i+1])/2
-        dl = abs(λ[i+1] - λ[i])
-        df = f(lcentre,T)/norm #normalization because the values of Planck functions can be rather high
-        s+=fx_val*df*dl
-        sn+=df*dl 
+    norm = maximum(l->g(l,T),λ) # normalizing the value of Planck function
+    g_T = l->g(l,T)/norm
+    for i in eachindex(α)[begin:end-1]
+        lstart = λ[i]
+        lend = λ[i+1]
+        lcentre = (lstart + lend )/2
+        b1 = f(α[i]) 
+        b2 = (f(α[i+1])-b1)/(lend-lstart)
+        b1 = b1-b2*lstart
+        #second order polynomial fitting of f within the interval
+        (a1,a2,a3) = second_order_polynomial_fit(lstart,lcentre,lend,
+                                                g_T(lstart),
+                                                g_T(lcentre),
+                                                g_T(lend))
+        # g(l) = a1 + a2*l + a3*l²
+        # f(l) = b1 + b2*l
+        # ∫f(x)⋅g(x)dx = c2*l + c3*l² + c4*l³ + c5*l⁴
+        c2=a1*b1
+        c3=(a1*b2 + a2*b1)/2
+        c4 = (a2*b2 + a3*b1)/3
+        c5=a3*b2/4
+        #evaluating the integrand values
+        s+= fourth_order_polynomial_eval(0.0,c2,c3,c4,c5,lend) -
+                            fourth_order_polynomial_eval(0.0,c2,c3,c4,c5,lstart)
+        sn+=fourth_order_polynomial_eval(0.0,a1,a2/2,a3/3,0.0,lend) -
+                         fourth_order_polynomial_eval(0.0,a1,a2/2,a3/3,0.0,lstart)
     end 
-    return fx(s/sn)   
+    return f(s/sn)
 end
     """
     λₘ(T)
@@ -788,9 +812,34 @@ function ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
     returns units string of output quantity  return 
 """
 function units(f::Function)  error(DomainError(f,"This function is unsupported")) end
-    units(::typeof(ibb)) = "W/m²⋅sr⋅μm" 
-    units(::typeof(power)) = "W/(m²⋅sr)"
-    units(::typeof(band_power)) = "W/(m²⋅sr)"
-    units(::typeof(λₘ)) = "μm"
-    units(::typeof(tₘ)) = "K"
+
+units(::typeof(ibb)) = "W/m²⋅sr⋅μm" 
+units(::typeof(power)) = "W/(m²⋅sr)"
+units(::typeof(band_power)) = "W/(m²⋅sr)"
+units(::typeof(λₘ)) = "μm"
+units(::typeof(tₘ)) = "K"
+
+
+∇ₜ(::typeof(ibb)) = ∇ₜibb
+∇ₜ(::typeof(∇ₜibb)) = ∇²ₜibb
+∇²ₜ(::typeof(ibb)) = ∇²ₜibb
+∇ₗ(::typeof(ibb)) = ∇ₗibb
+∇ₗ(::typeof(∇ₗibb)) = ∇²ₗibb
+∇²ₗ(::typeof(ibb)) = ∇²ₗibb
+
+    """
+    second_order_polynomial_fit(x1,x2,x3,g1,g2,g3)
+
+Hardcoded second order polynomial lsqr fitting
+"""
+function second_order_polynomial_fit(x1,x2,x3,g1,g2,g3)
+        d = (x1 - x2)*(x1 - x3)*(x2 - x3);
+        a1  = g3*x1^2*x2 - g2*x1^2*x3 - g3*x1*x2^2 + g2*x1*x3^2 + g1*x2^2*x3 - g1*x2*x3^2
+        a2 = - g1*x2^2 + g2*x1^2 + g1*x3^2 - g3*x1^2 - g2*x3^2 + g3*x2^2
+        a3 =  g1*x2 - g2*x1 - g1*x3 + g3*x1 + g2*x3 - g3*x2
+        return (a1/d,a2/d,a3/d)
+    end
+    function fourth_order_polynomial_eval(a1,a2,a3,a4,a5,x)
+        return a1 + a2*x + a3*x^2 + a4*x^3+ a5*x^4
+    end
 end

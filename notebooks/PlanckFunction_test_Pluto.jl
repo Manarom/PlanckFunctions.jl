@@ -16,25 +16,28 @@ macro bind(def, element)
     #! format: on
 end
 
+# ╔═╡ 5033a26d-2ca9-4b41-bf3e-3e3439ce819e
+using Revise
+
 # ╔═╡ c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
-using StaticArrays,
-	PlutoUI, Plots, 
+using PlutoUI, Plots, 
 	Optimization,
 	OptimizationOptimJL,BenchmarkTools, 
 	LinearAlgebra, Interpolations,Printf,
-	MKL,LinearAlgebra, LegendrePolynomials, 
-	Polynomials, ForwardDiff,Revise, LaTeXStrings, PrettyTables
+	MKL,LinearAlgebra,
+	Polynomials, ForwardDiff, LaTeXStrings, PrettyTables
 
 # ╔═╡ 500f0cb0-bf70-11ee-19a8-35930e422cab
 md"""
-# Test of PlanckFunctions.jl
+# PlanckFunctions.jl 
 """
 
 # ╔═╡ 40e2112d-58cc-4650-8c6b-53b23a9fe470
 md"""
 ##### Contents
-* Planck functions
-* Optimization of BB temperature with and without the EmPoint type 
+* Planck function,derivatives
+* Fitting temperature using zero-,first- and second- order algorithms
+* Calculating integral emissivity, Planck- and Rosseland-averaged attenuation coefficient
 
 """
 
@@ -43,20 +46,18 @@ begin# we need the project structrue inside the notebook
 	notebook_path = @__DIR__()# this notebook local path
 	project_path = abspath(joinpath(notebook_path,".."))#project's path
 	src_path = abspath(joinpath(project_path,"src"))
-end
+end;
 
 # ╔═╡ 77e9ee5b-b7f5-4216-8745-ca0286ab9024
-include(joinpath(src_path,"PlanckFunctions.jl")) # the package file is includet using Revise methods, thus the code of the main file can be modified
-
-# ╔═╡ 309a7c96-bc35-4e3b-b7d5-5fabd550e37d
-names(Main)
+includet(joinpath(src_path,"PlanckFunctions.jl")) # the package file is includet using Revise methods, thus the code of the main file can be modified
+#include(joinpath(src_path,"PlanckFunctions.jl")) #this should be uncommented 
 
 # ╔═╡ 27ca1398-96ab-4d24-9c6d-63e02da49a94
-import .PlanckFunctions as PL
+import Main.PlanckFunctions as PL
 
 # ╔═╡ 9e047346-b39e-4179-8f8a-bb1188941606
 md"""
-### Testing main functionality of Planck module functions
+#### Testing main functions of PlanckFunctions module
 
  Plotting blackbody spectrum and its derivarives
 """
@@ -65,10 +66,10 @@ md"""
 md" Set wavelength region: "
 
 # ╔═╡ f1664b05-3dfb-4aa9-8b81-1e3e1ed488c8
-md"wavelength region left boundary,  λₗ = $(@bind lam_left confirm(Slider(0.1:0.1:60,default=0.1,show_value = true)))"
+md"wavelength region left boundary,  λₗ = $(@bind lam_left Slider(0.1:0.1:60,default=0.1,show_value = true))"
 
 # ╔═╡ 323ed168-3ebb-4f9a-bdd9-2db3dace879c
-md"wavelength region right boundary λᵣ = $(@bind lam_right confirm(Slider(0.1:0.1:60,default=lam_left+10,show_value = true)))"
+md"wavelength region right boundary λᵣ = $(@bind lam_right Slider(0.1:0.1:60,default=lam_left+10,show_value = true))"
 
 # ╔═╡ 6beb18fe-4e7c-4851-ab94-b5e6336bb8e6
 @bind  T_values PlutoUI.combine() do Child
@@ -92,7 +93,7 @@ T = [+(t,PL.Tₖ) for t in T_values]; # convert all temperatures to Kelvin
 lam = range(lam_left,lam_right,length=100); # full region (as far as EmPoint uses StaticArrays, the length of lam range should not be too high)
 
 # ╔═╡ b3d56970-6fe3-4834-89df-c931c07269c9
-pretty_table(HTML,hcat(T,PL.∫ibbₗ.(T,λₗ = lam_left,λᵣ=lam_right)), header = ["Temperature", "Fractional power"], top_left_str="Table of fraction of total power within spectral range $(lam_left) ... $(lam_right)")
+pretty_table(HTML,hcat(T,PL.∫ibbₗ.(T,λₗ = lam_left,λᵣ=lam_right)), header = ["Temperature", "Fractional power"], top_left_str="In-band spectral radiance within $(lam_left) ... $(lam_right) μm")
 
 # ╔═╡ 3de53f57-ca6f-433c-b3b7-5a59250895e9
 @bind p_func Select([("blackbody intensity","I", PL.ibb),("first derivative with λ","dI/dλ", PL.∇ₗibb), ("first derivative with T","dI/dT", PL.∇ₜibb),("second derivative with T","d²I/dT²", PL.∇²ₜibb),("second derivative  with λ","d²I/dλ²", PL.∇²ₗibb) ])
@@ -116,7 +117,7 @@ end
 
 # ╔═╡ 3a16c8c8-17d9-4c36-9bc1-99a081a32c33
 md"""
-### BB temperature fitting using Planck module and EmPoint type from BandPyrometry module
+### BB temperature fitting using PlanckFunctions module
 _________
 
 Least square discrepancy:\
@@ -126,14 +127,13 @@ Least square discrepancy:\
 """
 
 # ╔═╡ 05c7a161-4346-4464-b41f-66ca7b3e149d
-md" Blackbody real temperature ``T_{real}``  to be  fitted (Celsius)  $(@bind Ttr confirm(Slider(0.0:10:2500,default=500,show_value = true)))"
+md"""
+	Set the blackbody real temperature ``T_{real}``  to be  fitted (in Celsius)  $(@bind Ttr confirm(Slider(0.0:10:2500,default=500,show_value = true)))
+	"""
 
 # ╔═╡ a0b68a76-8eb0-43af-927a-2ffc1abcea98
 # "Measured" BB spectrum for temperature Ttr
 Imeas = PL.ibb.(lam,Ttr);
-
-# ╔═╡ a9214e4c-5467-4cca-81b3-059590b121b7
-em_point = BP.EmPoint(Imeas, collect(lam));# emissivity point 
 
 # ╔═╡ ae5738ce-9c29-42f3-8b9c-a465c8bf2952
 # residual function constructor	
@@ -159,31 +159,15 @@ function hess_fun!(H,T,l)
 end;
 
 # ╔═╡ 9bc6c540-53c8-4a4d-9194-629d9e0277ca
-md" Set the value of ``T_{try}`` to calculate ``r(T_{try}),\nabla_T r(T_{try}),\nabla_T^2 r(T_{try}) `` manually (Celsius) $@bind Ttry Slider(0.0:0.1:2500,default=500.0,show_value = true)"
+md"""
+	Set the value of ``T_{try}`` to calculate ``r(T_{try}),\nabla_T r(T_{try}),\nabla_T^2 r(T_{try}) `` manually (Celsius) $@bind Ttry Slider(0.0:0.1:2500,default=500.0,show_value = true)
+	"""
 
 # ╔═╡ fad07c97-14ee-4df8-9914-72309fa55d24
 begin
 	TtryK = Ttry+PL.Tₖ
-	discr_values = [0.0,0.0,"-"]
-	grad_values  = [0.0,0.0,0.0]
-	hess_values = [0.0,0.0,0.0]
 	lam_vec = collect(lam)
-	discr_values[1] = residual_func(TtryK,lam_vec) # direct discrepancy calculation
-	discr_values[2] =BP.disc([TtryK],em_point) # calculating the discrepancy inside  the EmPoint
-
-	#calculating first order derivatives
-	grad_fun!(view(grad_values,1),TtryK,lam_vec) # direct calculation of the gradient 
-	G = [0.0]
-	BP.grad!(G,[TtryK],em_point) # EmPoint calculation of the gradient
-	grad_values[2] = G[]
-	auto_fo_der(t) =  ForwardDiff.derivative(x->residual_func(x,lam_vec),t)
-	grad_values[3] = auto_fo_der(TtryK)
-	# calculating second order derivatives
-	hess_values[3] = ForwardDiff.derivative(auto_fo_der, TtryK) #using autodiff
-	hess_fun!(view(hess_values,1),[TtryK],lam_vec)
-	BP.hess!(G,[TtryK],em_point) # EmPoint calculation of the second order derivative
-	hess_values[2] =G[]
-	pretty_table(HTML,hcat(["Direct","EmPoint", "AutoDiff"],discr_values,grad_values,hess_values),header = ["calculated using:","discrepancy", "gradient", "hessian"],top_left_str= "Table of discrepancy and its derivatives values, calculated for T=$(TtryK),K" )
+	discr_values = residual_func(TtryK,lam_vec) # direct discrepancy calculation
 end
 
 # ╔═╡ 439c48f9-69e7-46bc-8c42-f53ad5456772
@@ -194,9 +178,14 @@ begin
 	t2 = Ref(0.0)
 end;# rerun this cel 
 
+# ╔═╡ ccab5fd9-53c2-452b-9c30-ce3db6be75ad
+md"""
+#### The following example shows the fitting of blackbody temperature by solving the least-squares problem using `Optimization.jl`
+"""
+
 # ╔═╡ e7d5617b-1da9-4b96-bd7a-0490e8e4ceca
 md"""
-#### Try zero order method fitting = $(@bind is_zero_order_run  confirm(CheckBox()))
+##### Try zero order method fitting = $(@bind is_zero_order_run  confirm(CheckBox()))
 	"""
 
 # ╔═╡ c7caa7f6-fae1-4e07-aae8-a11312d74f09
@@ -209,18 +198,11 @@ if is_zero_order_run
 		#optimization problem in terms of primitive implementation
 		prob_zo= OptimizationProblem(OptimizationFunction(residual_func,Optimization.AutoForwardDiff()), [235.0],collect(lam),lb=[20.0],ub=[2500.0]); 
 		sol_zo = solve(prob_zo,  zero_order_method[2]());#solution
-		#optimization problem solution using BandPyrometry.EmPoint object 
-		em_point_zo = BP.EmPoint(copy(Imeas), collect(lam));# emissivity point 
-		em_prob_zo= OptimizationProblem(OptimizationFunction(BP.disc,grad=BP.grad!), [235.0],em_point_zo);# optimization problem with Empoint implementation
-		em_sol_zo = solve(em_prob_zo,  zero_order_method[2]()) # solution using 
 	end
 end;
 
 # ╔═╡ dd0b1fbb-c56f-4ac8-8ad8-57d6add2ddcc
 is_zero_order_run ? md"Tres direct = $( sol_zo.u[])" : nothing
-
-# ╔═╡ ccdce2ef-cbc9-4339-ab8b-7eaab5479c97
-is_zero_order_run ? md"Tres EmPoint =  $( em_sol_zo.u[])" : nothing
 
 # ╔═╡ 88dd837e-bb77-4ec4-87d8-1134b0f741ce
 md"show zero order output = $(@bind is_zero_order_out  CheckBox())"
@@ -230,17 +212,11 @@ if is_zero_order_run && is_zero_order_out
 	sol_zo.original
 end
 
-# ╔═╡ 6cc50dda-bb5c-4138-a520-973e8dae3df0
-if is_zero_order_run && is_zero_order_out
-	em_sol_zo.original
-end
-
 # ╔═╡ 8c13923d-612b-44d5-8046-bf4aa4bc175e
 if is_zero_order_run&&is_zero_order_out
 	begin
 		plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr)")
 		plot!(lam, PL.ibb(lam, sol_zo.u[]),label="Direct solution T=$(sol_zo.u[])")
-		scatter!(lam, PL.ibb(lam, em_sol_zo.u[]),label="EmPoint solution T=$(em_sol_zo.u[])")
 		xlabel!("Wavelength, μm")
 		ylabel!("Blackbody intensity, a.u.")
 	end
@@ -254,15 +230,6 @@ if is_zero_order_run && is_zero_order_bench
 	begin 
 		bm_res[] = @benchmark solve(prob_zo,  zero_order_method[2]())
 		t1[]=mean(bm_res[].times)
-		bm_res[]
-	end
-end
-
-# ╔═╡ 8b70cb0a-ce22-4b11-bb75-4240b2b2b36b
-if is_zero_order_run && is_zero_order_bench
-	begin 
-		bm_res[] = @benchmark solve(em_prob_zo,  zero_order_method[2]())
-		t2[]=mean(bm_res[].times)
 		bm_res[]
 	end
 end
@@ -284,20 +251,12 @@ md"""
 if is_first_order_run
 	begin 
 		prob_fo= OptimizationProblem(OptimizationFunction(residual_func,grad=grad_fun!), [235.0],collect(lam)); 
-		sol_fo = solve(prob_fo,  first_order_method[2]());
-		# optimization problem with Empoint implementation
-		em_point_fo = BP.EmPoint(copy(Imeas), collect(lam));# emissivity point 
-		em_prob_fo= OptimizationProblem(OptimizationFunction(BP.disc,
-			grad=BP.grad!), [835.0],em_point_fo);
-		em_sol_fo = solve(em_prob_fo,  first_order_method[2]()); # solution using 
+		sol_fo = solve(prob_fo,  first_order_method[2]()); 
 	end;
 end
 
 # ╔═╡ 6974f06e-e0a9-48aa-ac4b-3c2b55b13734
 is_first_order_run ? md"Tres direct implementation= $( sol_fo.u[])" : nothing
-
-# ╔═╡ ab8d29d4-e221-4223-b5a8-dda4e2a32c0f
-is_first_order_run ? md"Tres EmPoint= $( em_sol_fo.u[])" : nothing
 
 # ╔═╡ 608f923e-c327-4252-a245-49ada28cc874
 md"show first order output = $(@bind is_first_order_out  CheckBox())"
@@ -305,16 +264,12 @@ md"show first order output = $(@bind is_first_order_out  CheckBox())"
 # ╔═╡ e691fe83-64e9-4b85-a32b-93dc0c669376
 is_first_order_run&&is_first_order_out ? sol_fo.original : nothing
 
-# ╔═╡ 6e8ec563-8797-4a40-89bb-c52a3d7802b8
-is_first_order_run&&is_first_order_out ? em_sol_fo.original : nothing
-
 # ╔═╡ 5730698e-7376-4723-829d-f2cc602d072a
 if is_first_order_run&&is_first_order_out
 	begin
 		p1 = plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr)")
 		title!("First order method $(first_order_method[1])")
 		plot!(lam, PL.ibb(lam, sol_fo.u[]),label="Direct solution T=$(sol_fo.u[])")
-		scatter!(lam, PL.ibb(lam, em_sol_fo.u[]),label="EmPoint solution T=$(em_sol_fo.u[])")
 		xlabel!("Wavelength, μm")
 		ylabel!("Blackbody intensity, a.u.")
 	end
@@ -328,15 +283,6 @@ if is_first_order_run&&is_first_order_bench
 	begin 
 		bm_res[] = @benchmark solve(prob_fo,  first_order_method[2]())
 		t1[]=mean(bm_res[].times)
-		bm_res[]
-	end
-end
-
-# ╔═╡ d76e765f-ff56-4c7e-b61e-0b49e88f558a
-if is_first_order_run&&is_first_order_bench
-	begin 
-		bm_res[] = @benchmark solve(em_prob_fo,  first_order_method[2]())
-		t2[]=mean(bm_res[].times)
 		bm_res[]
 	end
 end
@@ -358,21 +304,13 @@ md"""
 if is_second_order_run
 	begin 
 		prob_so= OptimizationProblem(OptimizationFunction(residual_func,
-			grad=grad_fun!,hess=hess_fun!), [235.0],collect(lam)); #optimization problem in terms of primitive implementation ,lb=[20.0],ub=[2500.0]
-		sol_so = solve(prob_so,  second_order_method[2]());
-		# optimization problem with Empoint implementation
-		em_point_so = BP.EmPoint(copy(Imeas), collect(lam));# emissivity point 
-		em_prob_so= OptimizationProblem(OptimizationFunction(BP.disc,
-			grad=BP.grad!, hess=BP.hess!), [835.0],em_point_so);
-		em_sol_so = solve(em_prob_so,  second_order_method[2]()) # solution using 
+			grad=grad_fun!,hess=hess_fun!,SciMLBase.NoAD()), [235.0],collect(lam)); #optimization problem in terms of primitive implementation ,lb=[20.0],ub=[2500.0]
+		sol_so = solve(prob_so,  second_order_method[2]());		
 	end;
 end
 
 # ╔═╡ c2071134-3355-4479-a2d7-55d2141bb7ff
 is_second_order_run ? md"Tres direct implementation= $( sol_so.u[])" : nothing
-
-# ╔═╡ d0afa1de-101b-4eea-b4c3-75d2b4bc27d9
-is_second_order_run ? md"Tres EmPoint= $( em_sol_so.u[])" : nothing
 
 # ╔═╡ 70f59af9-f609-4b9b-b23e-606bc3b2efa2
 md"show second order output = $(@bind is_second_order_out  CheckBox())"
@@ -380,16 +318,12 @@ md"show second order output = $(@bind is_second_order_out  CheckBox())"
 # ╔═╡ 51988df7-5be5-478f-8cda-b4999b32ff6f
 is_second_order_run&&is_second_order_out ? sol_so.original : nothing
 
-# ╔═╡ 207929ea-af4a-4d4c-b2d2-59a0dc927ba6
-is_second_order_run&&is_second_order_out ? em_sol_so.original : nothing
-
 # ╔═╡ e9ea4596-7d7b-4e87-87d2-88fb40a1b6ad
 if is_second_order_run&&is_second_order_out
 	begin
 		p2 = plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr)")
 		title!("First order method $(second_order_method[1])")
 		plot!(lam, PL.ibb(lam, sol_so.u[]),label="Direct solution T=$(sol_so.u[])")
-		scatter!(lam, PL.ibb(lam, em_sol_so.u[]),label="EmPoint solution T=$(em_sol_so.u[])")
 		xlabel!("Wavelength, μm")
 		ylabel!("Blackbody intensity, a.u.")
 	end
@@ -403,15 +337,6 @@ if is_second_order_bench
 	begin 
 		bm_res[] = @benchmark solve(prob_so,  second_order_method[2]())
 		t1[]=mean(bm_res[].times)
-		bm_res[]
-	end
-end
-
-# ╔═╡ 7e8ef8b5-630b-4150-aa46-d58537906103
-if is_second_order_run&&is_second_order_bench
-	begin 
-		bm_res[] = @benchmark solve(em_prob_so,  second_order_method[2]())
-		t2[]=mean(bm_res[].times)
 		bm_res[]
 	end
 end
@@ -432,11 +357,14 @@ end
 # ╔═╡ c200b8df-3580-4cb5-9da4-bf5e2113bccb
 md"Select benchmarks to compare"
 
-# ╔═╡ f9d71607-f558-4f90-b5a0-b4c445c97f2e
-@bind plot_data_selector  confirm(MultiSelect(collect(keys(benchmark_measures))))
+# ╔═╡ 6f3ea062-559b-4164-99ed-4d2c2375e369
+ @bind refresh_methods Button("Refresh methods selection")
 
-# ╔═╡ 92b7b55f-b50a-48cf-8d6e-0a95ae7b2465
-md"This figure show measured spectrum loaded using JDXreader"
+# ╔═╡ f9d71607-f558-4f90-b5a0-b4c445c97f2e
+begin 
+	refresh_methods
+	@bind plot_data_selector  confirm(MultiSelect(collect(keys(benchmark_measures))))
+end
 
 # ╔═╡ 21d63be3-b945-452b-91d8-63efb3568b95
 function plot_bencnhmark(benchmark_measures)
@@ -457,7 +385,8 @@ function plot_bencnhmark(benchmark_measures)
 	ppp = plot(bar(bars_coords, bars_values, 
 		label = "",
 		alpha = 0.5, 
-		bar_width = 0.8,fillcolor = colrs),		
+		bar_width = 0.8,fillcolor = colrs),	
+		label=nothing,
 		#background_color = :transparent,
 		background_color = :white,
 		#tickfontcolor= RGB(1, 1, 1),
@@ -466,10 +395,9 @@ function plot_bencnhmark(benchmark_measures)
 		xrotation = -10
 	)
 	ylims!(ppp,0.9*minimum(bars_values),1.1*maximum(bars_values))
-	title!("""Performance of direct impelementation
-				vs EmPoint type""")
+	title!("""Performance of fitting""")
 	temp = [-10 -20; -30 -40 ]
-	plot!(temp, color=[b_c r_c], label=["Direct" "EmPoint"],linewidth=25)
+	plot!(temp, color=[b_c r_c],linewidth=25,label=nothing)
 	ylabel!("Soluion time, ms")
 	return ppp
 end;
@@ -480,6 +408,62 @@ begin
 	plot_bencnhmark(selected_benchs)
 end
 
+# ╔═╡ 95c03041-35f2-4426-abfd-5aebf85078a4
+md"""
+	#### Third example shows the calculation of `planck-function-weighted` data
+	"""
+
+# ╔═╡ bcc6fb2b-491c-4c1b-9e33-1433c93f61c1
+@bind  a_poly PlutoUI.combine() do Child
+	md"""
+	a₁ = $(
+		Child(Slider(0:1e-2:10,default=8,show_value = true))
+	) 
+	a₂ = $(
+		Child(Slider(-1:1e-3:1,default=-0.081,show_value = true))
+	)
+	a₃ = $(
+		Child(Slider(-0.01:1e-4:0.01,default=0.0015,show_value = true))
+	)
+	"""
+end
+
+# ╔═╡ 22ba3ba5-b82e-459f-b32d-8df4edc63965
+begin
+	lambda = collect(0.1:0.1:30)
+	Talpha = collect(73:10.0:2273)
+	α = a_poly[1] .+ a_poly[2]*lambda .+ a_poly[3]*lambda.^2 
+	map!(i->i>1e-3 ? i : 1e-3 ,α,α) # to correctly evaluate the rosseland mean alpha should be not equal zero
+end;
+
+# ╔═╡ 0f1cb732-3a12-4346-a2ba-e6d97dd2c37d
+@bind selectedT Slider(Talpha,default=Talpha[end], show_value = true) 
+
+# ╔═╡ 4eece7fd-21ee-41a5-846f-2a9ec615d979
+begin
+	alpha_spectral_plot = plot(lambda,α, label = "α",linewidth=3)
+	plot!(twinx(),lambda,PL.ibb(lambda,selectedT)/maximum(PL.ibb(lambda,selectedT)), label = "Planck function",color=:green,linewidth=3)
+	plot!(twinx(),lambda,PL.∇ₜibb.(lambda,selectedT)/maximum(PL.∇ₜibb.(lambda,selectedT)), label = "Planck function derivative",color=:red,linewidth=3)
+end
+
+# ╔═╡ 1494c540-32b7-464d-bb7f-0e9619ca53ed
+begin 
+	#rosseland_averaged = similar(T)
+	#planck_averaged = similar(T)
+	ros_attenuation_fun = t-> PL.rosseland_averaged_attenuation(α,lambda,t)
+	pl_attenuation_fun = t-> PL.planck_averaged_attenuation(α,lambda,t)
+	pl_averaging_fun = t-> PL.planck_averaged(α,lambda,t)
+	rosseland_averaged_attenuation = ros_attenuation_fun.(Talpha)
+	planck_averaged_attenuation = pl_attenuation_fun.(Talpha)
+	planck_averaged = pl_averaging_fun.(Talpha)
+	plot(Talpha,rosseland_averaged_attenuation,label = "Rosseland-weghted attenuation")
+	plot!(Talpha,planck_averaged_attenuation,label = "Planck-weighted attenuation")
+	plot!(Talpha,planck_averaged,label = "Planck averaged")
+end
+
+# ╔═╡ 56f70723-30e5-4ee8-a3e9-bc7f4c8b8492
+pretty_table(HTML,hcat(ros_attenuation_fun(selectedT),pl_attenuation_fun(selectedT),pl_averaging_fun(selectedT)),header = ["Rosseland-weighted attenuation", "Planck-weighted attenuation", "Planck-weighted direct"],title="The value of weighted α at T=$(selectedT) K")
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -487,7 +471,6 @@ BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
-LegendrePolynomials = "3db4a2ba-fc88-11e8-3e01-49c72059a882"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
 Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
@@ -498,14 +481,12 @@ Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
 BenchmarkTools = "~1.6.0"
 ForwardDiff = "~0.10.38"
 Interpolations = "~0.15.1"
 LaTeXStrings = "~1.4.0"
-LegendrePolynomials = "~0.4.5"
 MKL = "~0.8.0"
 Optimization = "~4.2.0"
 OptimizationOptimJL = "~0.4.3"
@@ -514,7 +495,6 @@ PlutoUI = "~0.7.62"
 Polynomials = "~4.0.19"
 PrettyTables = "~2.4.0"
 Revise = "~3.7.6"
-StaticArrays = "~1.9.13"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -523,7 +503,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "1bf88b088be28a072fc08e577e18b871ff58a32d"
+project_hash = "5a8090a1efd93538e419ccaecdb7c601c1e9f3a2"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -1257,12 +1237,6 @@ deps = ["AbstractTrees"]
 git-tree-sha1 = "fb6803dafae4a5d62ea5cab204b1e657d9737e7f"
 uuid = "1d6d02ad-be62-4b6b-8a6d-2f90e265016e"
 version = "0.2.0"
-
-[[deps.LegendrePolynomials]]
-deps = ["OffsetArrays", "SpecialFunctions"]
-git-tree-sha1 = "6b2dfd32d463aad78f68c36be95c6eddf4cd53fd"
-uuid = "3db4a2ba-fc88-11e8-3e01-49c72059a882"
-version = "0.4.5"
 
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
@@ -2426,13 +2400,13 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═500f0cb0-bf70-11ee-19a8-35930e422cab
-# ╠═40e2112d-58cc-4650-8c6b-53b23a9fe470
-# ╠═fc6d97d3-3775-42d2-a991-09d875b0dd38
-# ╠═c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
-# ╠═77e9ee5b-b7f5-4216-8745-ca0286ab9024
-# ╠═309a7c96-bc35-4e3b-b7d5-5fabd550e37d
-# ╠═27ca1398-96ab-4d24-9c6d-63e02da49a94
+# ╟─500f0cb0-bf70-11ee-19a8-35930e422cab
+# ╟─40e2112d-58cc-4650-8c6b-53b23a9fe470
+# ╟─fc6d97d3-3775-42d2-a991-09d875b0dd38
+# ╟─c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
+# ╟─5033a26d-2ca9-4b41-bf3e-3e3439ce819e
+# ╟─77e9ee5b-b7f5-4216-8745-ca0286ab9024
+# ╟─27ca1398-96ab-4d24-9c6d-63e02da49a94
 # ╟─9e047346-b39e-4179-8f8a-bb1188941606
 # ╟─7098ee9a-1dc9-43fb-b554-35d87174fc64
 # ╟─f1664b05-3dfb-4aa9-8b81-1e3e1ed488c8
@@ -2446,57 +2420,55 @@ version = "1.8.1+0"
 # ╟─3a16c8c8-17d9-4c36-9bc1-99a081a32c33
 # ╟─05c7a161-4346-4464-b41f-66ca7b3e149d
 # ╟─a0b68a76-8eb0-43af-927a-2ffc1abcea98
-# ╟─a9214e4c-5467-4cca-81b3-059590b121b7
 # ╟─ae5738ce-9c29-42f3-8b9c-a465c8bf2952
 # ╟─c52a950c-c15e-4188-a5ce-1ba3100d43b9
 # ╟─f3013bb6-eab2-4256-b244-ac3cd272cc42
 # ╟─9bc6c540-53c8-4a4d-9194-629d9e0277ca
 # ╟─fad07c97-14ee-4df8-9914-72309fa55d24
-# ╠═439c48f9-69e7-46bc-8c42-f53ad5456772
+# ╟─439c48f9-69e7-46bc-8c42-f53ad5456772
+# ╟─ccab5fd9-53c2-452b-9c30-ce3db6be75ad
 # ╟─e7d5617b-1da9-4b96-bd7a-0490e8e4ceca
 # ╟─c7caa7f6-fae1-4e07-aae8-a11312d74f09
 # ╟─e04ad4d7-c26a-4753-baa8-921121c27f08
 # ╟─dd0b1fbb-c56f-4ac8-8ad8-57d6add2ddcc
-# ╟─ccdce2ef-cbc9-4339-ab8b-7eaab5479c97
 # ╟─88dd837e-bb77-4ec4-87d8-1134b0f741ce
 # ╟─ede76282-d27a-41a2-ac92-101c26129346
-# ╟─6cc50dda-bb5c-4138-a520-973e8dae3df0
 # ╟─8c13923d-612b-44d5-8046-bf4aa4bc175e
 # ╟─1bbc82eb-16e3-47a2-814a-0a69bd803c75
 # ╟─7a4e3653-ee72-404c-a849-0e4c389b65f5
-# ╟─8b70cb0a-ce22-4b11-bb75-4240b2b2b36b
 # ╟─f80f2317-c3b1-4d06-b030-fcbb565ddd82
 # ╟─59af65c0-1520-4a8e-9f51-69c1446a723b
 # ╟─e498d53f-ade6-4085-9b3f-5468e8e99721
 # ╟─2ea9247a-e667-447d-8ed1-6100f76876a5
 # ╟─6974f06e-e0a9-48aa-ac4b-3c2b55b13734
-# ╟─ab8d29d4-e221-4223-b5a8-dda4e2a32c0f
 # ╟─608f923e-c327-4252-a245-49ada28cc874
 # ╟─e691fe83-64e9-4b85-a32b-93dc0c669376
-# ╟─6e8ec563-8797-4a40-89bb-c52a3d7802b8
 # ╟─5730698e-7376-4723-829d-f2cc602d072a
 # ╟─c34c44bf-1485-4f7d-8715-16fadc7b79bc
 # ╟─21137cef-18d9-42cb-90d7-f565a1b243eb
-# ╟─d76e765f-ff56-4c7e-b61e-0b49e88f558a
 # ╟─7b32578c-de60-47fa-ae3f-628bb1c887ba
 # ╟─95d1107f-07c5-4c31-904a-1471cb51ad33
 # ╟─631a1822-5bf0-4713-b048-a17b93bfa66e
 # ╟─ae12d403-1149-426e-ab13-5afc5e5615d9
 # ╟─c2071134-3355-4479-a2d7-55d2141bb7ff
-# ╟─d0afa1de-101b-4eea-b4c3-75d2b4bc27d9
 # ╟─70f59af9-f609-4b9b-b23e-606bc3b2efa2
 # ╟─51988df7-5be5-478f-8cda-b4999b32ff6f
-# ╟─207929ea-af4a-4d4c-b2d2-59a0dc927ba6
 # ╟─e9ea4596-7d7b-4e87-87d2-88fb40a1b6ad
 # ╟─52894f69-76ab-4045-b70c-67bea0043279
 # ╟─70476796-ae99-490b-a77f-7b609b9e5b5f
-# ╟─7e8ef8b5-630b-4150-aa46-d58537906103
 # ╟─3cd039d3-3926-4889-a743-a8b908bf1796
-# ╟─8cfa738e-05cc-4d86-b40c-86442d14b4b1
+# ╠═8cfa738e-05cc-4d86-b40c-86442d14b4b1
 # ╟─c200b8df-3580-4cb5-9da4-bf5e2113bccb
+# ╟─6f3ea062-559b-4164-99ed-4d2c2375e369
 # ╠═f9d71607-f558-4f90-b5a0-b4c445c97f2e
 # ╟─6f7497ac-d157-4ed5-8ed8-2a80f267efad
-# ╟─92b7b55f-b50a-48cf-8d6e-0a95ae7b2465
 # ╟─21d63be3-b945-452b-91d8-63efb3568b95
+# ╟─95c03041-35f2-4426-abfd-5aebf85078a4
+# ╟─bcc6fb2b-491c-4c1b-9e33-1433c93f61c1
+# ╟─22ba3ba5-b82e-459f-b32d-8df4edc63965
+# ╟─4eece7fd-21ee-41a5-846f-2a9ec615d979
+# ╟─0f1cb732-3a12-4346-a2ba-e6d97dd2c37d
+# ╠═56f70723-30e5-4ee8-a3e9-bc7f4c8b8492
+# ╟─1494c540-32b7-464d-bb7f-0e9619ca53ed
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

@@ -11,7 +11,8 @@ PlanckFunctions.jl is designed to calculate the Planck's function thermal emissi
 - PlanckFunctions.jl package contains several functions to evaluate: 
     - Blackbody spectral intensity (Planck function)
     - The first and the second derivatives of Planck function with respect to the wavelength and temperature 
-    - Planck function fast integration over the specified wavelength region  
+    - Planck function fast integration over the specified wavelength region 
+    - Rosseland- and Planck- averaged attenuation coefficient  
 
 ## Contact
 

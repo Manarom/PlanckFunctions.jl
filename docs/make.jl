@@ -4,6 +4,7 @@ using Documenter,PlanckFunctions,.TestingData
 mathengine = Documenter.MathJax3()
 makedocs(
         sitename = "PlanckFunctions.jl",
+        repo="https://github.com/Manarom/PlanckFunctions.jl/blob/{commit}{path}#{line}",
         highlightsig = false,
         checkdocs = :none,
         format=Documenter.HTML(size_threshold = 2000 * 2^10),
@@ -17,3 +18,11 @@ makedocs(
                  ] 
                ]#
 			   )
+deploydocs(;
+                repo="github.com/Manarom/PlanckFunctions.jl", 
+                devbranch = "master",
+                devurl="dev",
+                target = "build",
+                branch = "gh-pages",
+                versions = ["stable" => "v^", "v#.#" ]
+        )

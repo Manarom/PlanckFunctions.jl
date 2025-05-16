@@ -13,6 +13,7 @@ PlanckFunctions.jl is designed to calculate the Planck's function thermal emissi
     - The first and the second derivatives of Planck function with respect to the wavelength and temperature 
     - Planck function fast integration over the specified wavelength region 
     - Rosseland- and Planck- averaged attenuation coefficient  
+
 Full documentation is available at  [documentation](https://manarom.github.io/PlanckFunctions.jl/)
 ## Contact
 

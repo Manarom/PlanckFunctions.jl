@@ -5,7 +5,7 @@
 ```
 
 
-Notebook file with `PlanckFunctions.jl` usage examples are available at [Pluto notebooks](https://github.com/Manarom/BandPyrometry.jl/blob/main/notebooks).
+Notebook file with `PlanckFunctions.jl` usage examples are available at [Pluto notebooks](https://github.com/Manarom/PlanckFunctions.jl/blob/master/notebooks).
 
 To run these notebooks, you need:
 1) Install `julia` language itself from its official [download page](https://julialang.org/downloads) 

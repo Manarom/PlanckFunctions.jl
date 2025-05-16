@@ -35,9 +35,9 @@ md"""
 # ╔═╡ 40e2112d-58cc-4650-8c6b-53b23a9fe470
 md"""
 ##### Contents
-* Planck function,derivatives
+* Planck functions - spectral and integral radiance, derivatives and in-band radiance
 * Fitting temperature using zero-,first- and second- order algorithms
-* Calculating integral emissivity, Planck- and Rosseland-averaged attenuation coefficient
+* Calculating integral averaged preopeties, Planck- and Rosseland-averaged attenuation coefficient, integral emissivity
 
 """
 
@@ -57,7 +57,7 @@ import Main.PlanckFunctions as PL
 
 # ╔═╡ 9e047346-b39e-4179-8f8a-bb1188941606
 md"""
-#### Testing main functions of PlanckFunctions module
+#### Main functions of PlanckFunctions module
 
  Plotting blackbody spectrum and its derivarives
 """
@@ -76,24 +76,27 @@ md"wavelength region right boundary λᵣ = $(@bind lam_right Slider(0.1:0.1:60,
 	md"""
 	T₁ = $(
 		Child(Slider(-200.0:10:2500,default=300,show_value = true))
-	) 
+	) °C
+	
 	T₂ = $(
 		Child(Slider(-200.0:10:2500,default=900,show_value = true))
-	)
+	) °C
+	
 	T₃ = $(
 		Child(Slider(-200.0:10:2500,default=1500,show_value = true))
-	)
+	) °C
+	
 	"""
 end
 
 # ╔═╡ 536278e5-8cb7-4787-9018-b862f0adfc07
 T = [+(t,PL.Tₖ) for t in T_values]; # convert all temperatures to Kelvin
 
-# ╔═╡ baf332fc-a805-4981-b569-70324a879a99
-lam = range(lam_left,lam_right,length=100); # full region (as far as EmPoint uses StaticArrays, the length of lam range should not be too high)
+# ╔═╡ ca9ab491-ca03-480d-9ba8-d8bf7ecaf8bf
+lam = range(lam_left,lam_right,length=1000); # full region (as far as EmPoint uses StaticArrays, the length of lam range should not be too high)
 
 # ╔═╡ b3d56970-6fe3-4834-89df-c931c07269c9
-pretty_table(HTML,hcat(T,PL.∫ibbₗ.(T,λₗ = lam_left,λᵣ=lam_right)), header = ["Temperature", "Fractional power"], top_left_str="In-band spectral radiance within $(lam_left) ... $(lam_right) μm")
+pretty_table(HTML,hcat(T,PL.∫ibbₗ.(T,λₗ = lam_left,λᵣ=lam_right),PL.λₘ.(T)), header = ["Temperature", "Fractional power ", "Peak wavelength, [μm]"], top_left_str="In-band spectral radiance within $(lam_left) ... $(lam_right) μm")
 
 # ╔═╡ 3de53f57-ca6f-433c-b3b7-5a59250895e9
 @bind p_func Select([("blackbody intensity","I", PL.ibb),("first derivative with λ","dI/dλ", PL.∇ₗibb), ("first derivative with T","dI/dT", PL.∇ₜibb),("second derivative with T","d²I/dT²", PL.∇²ₜibb),("second derivative  with λ","d²I/dλ²", PL.∇²ₗibb) ])
@@ -104,11 +107,12 @@ begin
 		title=p_func[1],
 		legend=true,
 		xlabel = "λ [μm]", 
-		ylabel =p_func[2],
+		ylabel =p_func[2]*" ["*PL.units(p_func[3])*"]", #units - returns units string
 		label =@sprintf("T=%5.1f K",T[1]))
 	for i in 2:3
 		plot!(lam,p_func[3].(lam,T[i]),
 		title=p_func[1],
+			  linewidth=3,
 		legend=true,
 		label =@sprintf("T=%5.1f K",T[i]))
 	end
@@ -121,53 +125,68 @@ md"""
 _________
 
 Least square discrepancy:\
-``r(T)=\sum_{i}(I_{bb}(\lambda_i, T) -I_{bb}(\lambda_i, T_{real}))^2 ``
+``r(T)=\frac {1} {2} \sum_{i} r\\^2\\_i=\frac {1} {2} \sum_{i}(I_{bb}(\lambda_i, T) -I_{bb}(\lambda_i, T_{real}))^2 ``
 
 ``I_{bb}(\lambda, T)``  is the blackbody spectrum
+
+To implement the `OptimizationFunction` interface we need to provide the gradient 
+
+``∇\\_T r(T) = \sum_{i} \nabla I\\_{bb}(\lambda_i, T) r\\_i`` 
+
+and the hessian 
+
+``\nabla\\^2 \\_T r(T) =\sum_{i} ( \nabla I\\_{bb}(\lambda_i, T) r\\_i + [\nabla I\\_{bb}(\lambda_i, T)]\\^2)``
+
+of the discrepancy function r(T).
 """
 
 # ╔═╡ 05c7a161-4346-4464-b41f-66ca7b3e149d
 md"""
-	Set the blackbody real temperature ``T_{real}``  to be  fitted (in Celsius)  $(@bind Ttr confirm(Slider(0.0:10:2500,default=500,show_value = true)))
+	Set the blackbody real temperature ``T_{real}``  to be  fitted (in Celsius)  $(@bind Ttr_c confirm(Slider(0.0:10:2500,default=500,show_value = true)))
 	"""
 
-# ╔═╡ a0b68a76-8eb0-43af-927a-2ffc1abcea98
-# "Measured" BB spectrum for temperature Ttr
-Imeas = PL.ibb.(lam,Ttr);
+# ╔═╡ cf20dc50-152a-440e-9dae-12e9686576ba
+md" Relative random error $(@bind noise Slider(0.0:1e-3:1e-1,show_value=true,default=0.0))"
 
 # ╔═╡ ae5738ce-9c29-42f3-8b9c-a465c8bf2952
-# residual function constructor	
-residual_func(T,l)=0.5*norm( Imeas .- PL.ibb.(l,T))^2;
-
-# ╔═╡ c52a950c-c15e-4188-a5ce-1ba3100d43b9
-# gradient function calculated directly using Planck module functions
-function grad_fun!(G,T,l) 
-	amat = repeat(l,1,3)
-	PL.a₁₂₃!(amat,l,T[end])
-	Ib = copy(l)
-	PL.ibb!(Ib,l,amat)
-	∇I = copy(l)
-	PL.∇ₜibb!(∇I,T[end],amat,Ib)
-	G[1] = -dot(∇I,(Imeas -Ib))
-end;
-
-# ╔═╡ f3013bb6-eab2-4256-b244-ac3cd272cc42
-# Hessian direct implementation	
-function hess_fun!(H,T,l) 
-	(i1,i2,i3) = PL.Dₜibb(l,T)# returns planck,first and second derivatives
-	H[1] = -dot(i3,Imeas .-i1) + dot(i2,i2);
+begin # residual function constructor	
+	Ttr = Ttr_c +PL.Tₖ
+	# "Measured" BB spectrum for temperature Ttr
+	Imeas = PL.ibb(lam,Ttr) + noise*randn(length(lam))
+	residual_func(T,l)=0.5*norm( PL.ibb(l,T) .- Imeas)^2/length(l)
+	# gradient function calculated directly using Planck module functions
+	function grad_fun!(G,T,l) 
+		amat = repeat(l,1,3)
+		PL.a₁₂₃!(amat,l,T[end])
+		Ib = copy(l)
+		PL.ibb!(Ib,l,amat)
+		∇I = copy(l)
+		PL.∇ₜibb!(∇I,T[end],amat,Ib)
+		G[1] = dot(∇I,(Ib .-Imeas))/length(l)
+	end
+	function hess_fun!(H,T,l) 
+		(i1,i2,i3) = PL.Dₜibb(l,T)# returns planck,first and second derivatives
+		H[1] = dot(i3,i1 .-Imeas) + dot(i2,i2)
+		H[1]  = H[]/length(l)
+	end
 end;
 
 # ╔═╡ 9bc6c540-53c8-4a4d-9194-629d9e0277ca
 md"""
-	Set the value of ``T_{try}`` to calculate ``r(T_{try}),\nabla_T r(T_{try}),\nabla_T^2 r(T_{try}) `` manually (Celsius) $@bind Ttry Slider(0.0:0.1:2500,default=500.0,show_value = true)
+	Set the value of ``T_{try}`` to calculate ``r(T_{try}),\nabla_T r(T_{try}),\nabla_T^2 r(T_{try}) `` manually (Celsius) $@bind Ttry Slider(0.0:10:2500,default=500.0,show_value = true)
 	"""
 
 # ╔═╡ fad07c97-14ee-4df8-9914-72309fa55d24
 begin
-	TtryK = Ttry+PL.Tₖ
+	TtryK = [Ttry+PL.Tₖ]
+	Gtry = [0.0]
+	Htry = [0.0]
 	lam_vec = collect(lam)
 	discr_values = residual_func(TtryK,lam_vec) # direct discrepancy calculation
+	grad_fun!(Gtry,TtryK,lam_vec)
+	hess_fun!(Htry,TtryK,lam_vec)
+
+	pretty_table(HTML,hcat(discr_values, Gtry[],Htry[]),header = ["r", "∇r", "∇²r"],title="Duscrepancy value and its derivatives at T=$(TtryK[]) K")
 end
 
 # ╔═╡ 439c48f9-69e7-46bc-8c42-f53ad5456772
@@ -202,7 +221,7 @@ if is_zero_order_run
 end;
 
 # ╔═╡ dd0b1fbb-c56f-4ac8-8ad8-57d6add2ddcc
-is_zero_order_run ? md"Tres direct = $( sol_zo.u[])" : nothing
+is_zero_order_run ? md"Tres zero oder method , °C  = $( sol_zo.u[] - PL.Tₖ )" : nothing
 
 # ╔═╡ 88dd837e-bb77-4ec4-87d8-1134b0f741ce
 md"show zero order output = $(@bind is_zero_order_out  CheckBox())"
@@ -215,8 +234,8 @@ end
 # ╔═╡ 8c13923d-612b-44d5-8046-bf4aa4bc175e
 if is_zero_order_run&&is_zero_order_out
 	begin
-		plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr)")
-		plot!(lam, PL.ibb(lam, sol_zo.u[]),label="Direct solution T=$(sol_zo.u[])")
+		plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr  - PL.Tₖ ) °C")
+		plot!(lam, PL.ibb(lam, sol_zo.u[]),label="Direct solution T=$(sol_zo.u[]  - PL.Tₖ ) °C")
 		xlabel!("Wavelength, μm")
 		ylabel!("Blackbody intensity, a.u.")
 	end
@@ -256,7 +275,7 @@ if is_first_order_run
 end
 
 # ╔═╡ 6974f06e-e0a9-48aa-ac4b-3c2b55b13734
-is_first_order_run ? md"Tres direct implementation= $( sol_fo.u[])" : nothing
+is_first_order_run ? md"Tres first order optimization method °C = $( sol_fo.u[] - PL.Tₖ )" : nothing
 
 # ╔═╡ 608f923e-c327-4252-a245-49ada28cc874
 md"show first order output = $(@bind is_first_order_out  CheckBox())"
@@ -267,9 +286,9 @@ is_first_order_run&&is_first_order_out ? sol_fo.original : nothing
 # ╔═╡ 5730698e-7376-4723-829d-f2cc602d072a
 if is_first_order_run&&is_first_order_out
 	begin
-		p1 = plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr)")
+		p1 = plot(lam,Imeas, label="Measured spectrum Treal=$(Ttr - PL.Tₖ ) °C")
 		title!("First order method $(first_order_method[1])")
-		plot!(lam, PL.ibb(lam, sol_fo.u[]),label="Direct solution T=$(sol_fo.u[])")
+		plot!(lam, PL.ibb(lam, sol_fo.u[]),label="Fitting T=$(sol_fo.u[] - PL.Tₖ ) °C")
 		xlabel!("Wavelength, μm")
 		ylabel!("Blackbody intensity, a.u.")
 	end
@@ -310,7 +329,7 @@ if is_second_order_run
 end
 
 # ╔═╡ c2071134-3355-4479-a2d7-55d2141bb7ff
-is_second_order_run ? md"Tres direct implementation= $( sol_so.u[])" : nothing
+is_second_order_run ? md"Tres second order optimization °C= $( sol_so.u[] - PL.Tₖ ) °C" : nothing
 
 # ╔═╡ 70f59af9-f609-4b9b-b23e-606bc3b2efa2
 md"show second order output = $(@bind is_second_order_out  CheckBox())"
@@ -351,7 +370,7 @@ if is_zero_order_bench || is_first_order_bench || is_second_order_bench
 	t_dir_vec = [ b[2].t_direct/1e6 for b in benchmark_measures]
 	t_em_vec = [ b[2].t_emPoint/1e6 for b in benchmark_measures]
 	optims_vec = collect(keys(benchmark_measures))
-	pretty_table(HTML,hcat(optims_vec,t_dir_vec,t_em_vec),header = ["Optimizer", "time Direct, ms", "time EmPoint, ms"])
+	pretty_table(HTML,hcat(optims_vec,t_dir_vec),header = ["Optimizer", "time, ms"])
 end
 
 # ╔═╡ c200b8df-3580-4cb5-9da4-bf5e2113bccb
@@ -395,7 +414,7 @@ function plot_bencnhmark(benchmark_measures)
 		xrotation = -10
 	)
 	ylims!(ppp,0.9*minimum(bars_values),1.1*maximum(bars_values))
-	title!("""Performance of fitting""")
+	title!("""Fitting time""")
 	temp = [-10 -20; -30 -40 ]
 	plot!(temp, color=[b_c r_c],linewidth=25,label=nothing)
 	ylabel!("Soluion time, ms")
@@ -410,7 +429,24 @@ end
 
 # ╔═╡ 95c03041-35f2-4426-abfd-5aebf85078a4
 md"""
-	#### Third example shows the calculation of `planck-function-weighted` data
+
+#### Third example shows the calculation of `planck-function-weighted` data
+
+For several applications like thermal radiation heat transfer (Rosseland diffusion approximation) there is a need of spectral attenuation coefficient averaging over the thermal radiation spectrum in the following form:
+
+``\frac {1} {\alpha\\_r(T)} = \int\\_{\lambda\\_1}\\^{\lambda\\_2} \frac {1} {\alpha(λ)}\nabla\\_T i\\_{bb}(\lambda,T)dλ/\int\\_{\lambda\\_1}\\^{\lambda\\_2} \nabla\\_T i\\_{bb}(\lambda,T)dλ ``  - Rosseland-averaged attenuation `PlanckFunctions.rosseland_averaged_attenuation`
+
+This integral returns averaged attenuation coefficient which can be used to calculate effective thermal condyctivity for the participation medium [for details see e.g. $(PL.citation)
+
+There also various versions of quantities averaging:
+
+``\frac {1} {\alpha\\_r(T)} = \int\\_{\lambda\\_1}\\^{\lambda\\_2} \frac {1} {\alpha(λ)} i\\_{bb}(\lambda,T)dλ/\int\\_{\lambda\\_1}\\^{\lambda\\_2} i\\_{bb}(\lambda,T)dλ `` - Planck-averaged attenuation  `PlanckFunctions.planck_averaged_attenuation`
+
+``\alpha\\_r(T) = \int\\_{\lambda\\_1}\\^{\lambda\\_2} \alpha(λ)  i\\_{bb}(\lambda,T)dλ/\int\\_{\lambda\\_1}\\^{\lambda\\_2} i\\_{bb}(\lambda,T)dλ `` - Planck-averaged (`PlanckFunctions.planck_averaged`)
+
+The abovementioned functions are applied to α 
+α(λ) = a₁ + a₂λ + a₃λ²
+
 	"""
 
 # ╔═╡ bcc6fb2b-491c-4c1b-9e33-1433c93f61c1
@@ -428,6 +464,9 @@ md"""
 	"""
 end
 
+# ╔═╡ 8477c4f8-7ab3-4763-a204-487e5f2f47c8
+md" α(λ) = $(a_poly[1]) + $(a_poly[2])λ + $(a_poly[3])λ²"
+
 # ╔═╡ 22ba3ba5-b82e-459f-b32d-8df4edc63965
 begin
 	lambda = collect(0.1:0.1:30)
@@ -437,7 +476,7 @@ begin
 end;
 
 # ╔═╡ 0f1cb732-3a12-4346-a2ba-e6d97dd2c37d
-@bind selectedT Slider(Talpha,default=Talpha[end], show_value = true) 
+md"Blackbody temperature $(@bind selectedT Slider(Talpha,default=Talpha[Int(ceil(end/2))], show_value = true))" 
 
 # ╔═╡ 4eece7fd-21ee-41a5-846f-2a9ec615d979
 begin
@@ -448,17 +487,17 @@ end
 
 # ╔═╡ 1494c540-32b7-464d-bb7f-0e9619ca53ed
 begin 
-	#rosseland_averaged = similar(T)
-	#planck_averaged = similar(T)
 	ros_attenuation_fun = t-> PL.rosseland_averaged_attenuation(α,lambda,t)
 	pl_attenuation_fun = t-> PL.planck_averaged_attenuation(α,lambda,t)
 	pl_averaging_fun = t-> PL.planck_averaged(α,lambda,t)
 	rosseland_averaged_attenuation = ros_attenuation_fun.(Talpha)
 	planck_averaged_attenuation = pl_attenuation_fun.(Talpha)
 	planck_averaged = pl_averaging_fun.(Talpha)
-	plot(Talpha,rosseland_averaged_attenuation,label = "Rosseland-weghted attenuation")
-	plot!(Talpha,planck_averaged_attenuation,label = "Planck-weighted attenuation")
-	plot!(Talpha,planck_averaged,label = "Planck averaged")
+	ppp = plot(Talpha,rosseland_averaged_attenuation,label = "Rosseland-weghted attenuation",linewidth = 3)
+	plot!(ppp,Talpha,planck_averaged_attenuation,label = "Planck-weighted attenuation",linewidth = 3)
+	plot!(ppp,Talpha,planck_averaged,label = "Planck averaged",linewidth = 3)
+	xlabel!(ppp,"Temperature, K")
+	ylabel!(ppp,"Averaged α, a.u.")
 end
 
 # ╔═╡ 56f70723-30e5-4ee8-a3e9-bc7f4c8b8492
@@ -2413,16 +2452,14 @@ version = "1.8.1+0"
 # ╟─323ed168-3ebb-4f9a-bdd9-2db3dace879c
 # ╟─6beb18fe-4e7c-4851-ab94-b5e6336bb8e6
 # ╟─536278e5-8cb7-4787-9018-b862f0adfc07
-# ╟─baf332fc-a805-4981-b569-70324a879a99
+# ╟─ca9ab491-ca03-480d-9ba8-d8bf7ecaf8bf
 # ╟─b3d56970-6fe3-4834-89df-c931c07269c9
 # ╟─3de53f57-ca6f-433c-b3b7-5a59250895e9
 # ╟─04261201-2729-4e94-8244-d30ccc22a19d
 # ╟─3a16c8c8-17d9-4c36-9bc1-99a081a32c33
 # ╟─05c7a161-4346-4464-b41f-66ca7b3e149d
-# ╟─a0b68a76-8eb0-43af-927a-2ffc1abcea98
-# ╟─ae5738ce-9c29-42f3-8b9c-a465c8bf2952
-# ╟─c52a950c-c15e-4188-a5ce-1ba3100d43b9
-# ╟─f3013bb6-eab2-4256-b244-ac3cd272cc42
+# ╟─cf20dc50-152a-440e-9dae-12e9686576ba
+# ╠═ae5738ce-9c29-42f3-8b9c-a465c8bf2952
 # ╟─9bc6c540-53c8-4a4d-9194-629d9e0277ca
 # ╟─fad07c97-14ee-4df8-9914-72309fa55d24
 # ╟─439c48f9-69e7-46bc-8c42-f53ad5456772
@@ -2457,18 +2494,19 @@ version = "1.8.1+0"
 # ╟─52894f69-76ab-4045-b70c-67bea0043279
 # ╟─70476796-ae99-490b-a77f-7b609b9e5b5f
 # ╟─3cd039d3-3926-4889-a743-a8b908bf1796
-# ╠═8cfa738e-05cc-4d86-b40c-86442d14b4b1
+# ╟─8cfa738e-05cc-4d86-b40c-86442d14b4b1
 # ╟─c200b8df-3580-4cb5-9da4-bf5e2113bccb
 # ╟─6f3ea062-559b-4164-99ed-4d2c2375e369
-# ╠═f9d71607-f558-4f90-b5a0-b4c445c97f2e
+# ╟─f9d71607-f558-4f90-b5a0-b4c445c97f2e
 # ╟─6f7497ac-d157-4ed5-8ed8-2a80f267efad
 # ╟─21d63be3-b945-452b-91d8-63efb3568b95
 # ╟─95c03041-35f2-4426-abfd-5aebf85078a4
 # ╟─bcc6fb2b-491c-4c1b-9e33-1433c93f61c1
+# ╟─8477c4f8-7ab3-4763-a204-487e5f2f47c8
 # ╟─22ba3ba5-b82e-459f-b32d-8df4edc63965
 # ╟─4eece7fd-21ee-41a5-846f-2a9ec615d979
 # ╟─0f1cb732-3a12-4346-a2ba-e6d97dd2c37d
-# ╠═56f70723-30e5-4ee8-a3e9-bc7f4c8b8492
+# ╟─56f70723-30e5-4ee8-a3e9-bc7f4c8b8492
 # ╟─1494c540-32b7-464d-bb7f-0e9619ca53ed
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

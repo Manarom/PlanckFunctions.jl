@@ -474,9 +474,9 @@ function ∇²ₜibb!(h::AbstractVector{Float64},T::Float64,amat::AbstractMatrix
     Evaluates the Rosseland-averaged spectral attenuation coefficient (the summation of
     spectral scattering and absorption coefficients) α(λ) for temperature T:
 
-    αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ)⁻¹  
+    αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ/∫∇ₜibb(λ,T)dλ)⁻¹  
 """
-rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(α,λ,T,∇ₜibb,inv)
+rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,∇ₜibb,inv))
 
 """
     planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
@@ -484,16 +484,16 @@ rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
     Evaluates the Planck-averaged spectral attenuation coefficient (the summation of
     spectral scattering and absorption coefficients) α(λ) for temperature T:
 
-    αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ)⁻¹  
+    αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ/∫ibb(λ,T)dλ)⁻¹  
 """
-planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(α,λ,T,ibb,inv) #identity
+planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,ibb,inv)) #identity
 
 """
     planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number)
 
     Evaluates the Planck-averaged value of x(λ) for temperature T:
 
-    xᵣ = ∫x(λ)ibb(λ,T)dλ 
+    xᵣ = ∫x(λ)ibb(λ,T)dλ/∫ibb(λ,T)dλ 
 
     Can be used for example to evaluate the integral emissiovity from measured spectral emissivity
 """
@@ -501,12 +501,12 @@ planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_aver
 """
     weighted_average(α::AbstractVector, λ::AbstractVector,T,g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},f::Function=identity)
 
-    Generic function to evaluate the averaged value of some `fx` function of variable `x` dependent on wavelength `λ` 
-    for temperature `T`. Uses linear approximation for the discrete variable and square polynomial 
+    Generic function to evaluate the averaged value of some `f(x)` function of variable `x` dependent
+    on wavelength `λ` for temperature `T`. Uses linear approximation for the discrete variable and square polynomial 
     for the g function 
 
-    xᵣ = f(∫f(x)g(λ,T)dλ), the default value of f is inv, e.g. if f = inv:
-    xᵣ = 1/(∫g(λ,T)/x(λ)dλ)
+    xᵣ = ∫f(x)g(λ,T)dλ/∫g(λ,T)dλ, the default value of f is inv, e.g. if f = inv:
+    xᵣ = ∫g(λ,T)/x(λ)dλ/∫g(λ,T)dλ
 """
 function weighted_average(α::AbstractVector, λ::AbstractVector,T,g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},f::Function=identity)
     @assert length(λ)==length(α)
@@ -539,7 +539,7 @@ function weighted_average(α::AbstractVector, λ::AbstractVector,T,g::Union{type
         sn+=fourth_order_polynomial_eval(0.0,a1,a2/2,a3/3,0.0,lend) -
                          fourth_order_polynomial_eval(0.0,a1,a2/2,a3/3,0.0,lstart)
     end 
-    return f(s/sn)
+    return s/sn
 end
     """
     λₘ(T)
@@ -813,7 +813,10 @@ function ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
 """
 function units(f::Function)  error(DomainError(f,"This function is unsupported")) end
 
-units(::typeof(ibb)) = "W/m²⋅sr⋅μm" 
+units(::typeof(ibb)) = "W/(m²⋅sr⋅μm)" 
+units(::typeof(∇ₜibb)) = "W/(m²⋅sr⋅μm⋅K)"
+units(::typeof(∇²ₜibb)) = "W/(m²⋅sr⋅μm⋅K²)"
+units(::typeof(∇²ₗibb)) = "W/m²⋅sr⋅μm³"
 units(::typeof(power)) = "W/(m²⋅sr)"
 units(::typeof(band_power)) = "W/(m²⋅sr)"
 units(::typeof(λₘ)) = "μm"

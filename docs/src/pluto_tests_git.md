@@ -1,7 +1,6 @@
 ```@raw html
 
-<p>The static version of <b>PlanckFunctions.jl</b> Pluto notebook is available at :<a href="../planck_test_git.html">planck_test_git.html</a>,
-pdf version is available at:<a href="../assets/planck_test_git.pdf">planck_test_git.pdf</a>
+<p>The static version of <b>PlanckFunctions.jl</b> Pluto notebook is available at :<a href="../planck_test_git.html">planck_test_git.html</a>
 .</p
 ```
 

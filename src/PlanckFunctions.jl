@@ -44,11 +44,11 @@ module PlanckFunctions
 
     [`∇²ₗibb`](@ref)  - spectral intensity second derivative with respect to wavelength
 
-    [`∇²ₗibb`](@ref)  - spectral intensity second derivative with respect to wavelength
+    [`rosseland_averaged_attenuation`](@ref) - Rosseland-averaging of spectral attenuation
 
-    [`rosseland_averaged_attenuation`](@ref) - Rosseland-averaging of spectral atternuation
+    [`planck_averaged_attenuation`](@ref) - Planck-averaging of spectral attenuation
 
-    [`rosseland_averaged_attenuation`](@ref) - Planck-averaging of spectral atternuation
+
 
     Main literature sources are:
 

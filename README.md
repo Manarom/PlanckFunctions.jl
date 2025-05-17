@@ -3,8 +3,6 @@
 [![Build Status](https://github.com/Manarom/PlanckFunctions.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/Manarom/PlanckFunctions.jl/actions/workflows/CI.yml?query=branch%3Amaster)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://manarom.github.io/PlanckFunctions.jl)
 
-# PlanckFunctions.jl
-
 ## General description
 PlanckFunctions.jl is designed to calculate the Planck's function thermal emission spectra and its derivatives.
 

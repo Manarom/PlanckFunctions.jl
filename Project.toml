@@ -1,7 +1,7 @@
 name = "PlanckFunctions"
 uuid = "56edaee7-e77f-43d7-994d-8307b8de0a62"
 authors = ["Roman Mironov"]
-version = "1.0.0-DEV"
+version = "1.0.0"
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"

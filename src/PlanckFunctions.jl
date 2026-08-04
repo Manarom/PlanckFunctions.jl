@@ -13,6 +13,8 @@ module PlanckFunctions
             a₁₂₃!,
             power,
             band_power,
+            ∇ₜpower,
+            ∇ₜband_power,
             planck_averaged,
             planck_averaged_attenuation,
             rosseland_averaged_attenuation,
@@ -100,11 +102,11 @@ module PlanckFunctions
     2 - a2 = 1/expm1(a1)
     3 - a3 = exp(a1)*a2
 """
-function  a₁₂₃(λ,T)
+function  a₁₂₃(λ,T::F) where F
     a1=C₂/(λ*T)
     a2 = 1/expm1(a1)#1/eaxpm1(a)
     a3 = exp(a1)*a2#exp(a)/expm1(a)
-    return isnan(a3) ? (a1,a2,0.0) : (a1,a2,a3)
+    return isnan(a3) ? (a1 , a2 , zero(F)) : (a1 , a2 , a3)
 end
 """
     a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Float64)
@@ -188,7 +190,7 @@ function ibb(λ::AbstractVector,T::AbstractVector)
         T - temperature in Kelvins
 """
 function ibb!(i::AbstractVector,λ::AbstractVector,T::Float64)
-        map!(l->(C₁/expm1(C₂/(l*T)))*l^-5,i,λ)
+        map!(l->(C₁/expm1(C₂/(l*T)))*l^-5 , i , λ)
         return i
     end
     
@@ -508,7 +510,10 @@ planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_aver
     xᵣ = ∫f(x)g(λ,T)dλ/∫g(λ,T)dλ, the default value of f is inv, e.g. if f = inv:
     xᵣ = ∫g(λ,T)/x(λ)dλ/∫g(λ,T)dλ
 """
-function weighted_average(α::AbstractVector, λ::AbstractVector,T,g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},f::Function=identity)
+function weighted_average(α::AbstractVector, λ::AbstractVector,
+                        T,g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
+                        f::Function=identity)
+
     @assert length(λ)==length(α)
     s = 0.0
     sn = 0.0
@@ -562,6 +567,27 @@ end
     function tₘ(λ)
         # temperature (in Kelvins) of BB with intencity maximum at λ μm  
         C₃./λ
+    end
+        """
+        temperature(i)
+
+       The bb temperature for intensity `i` corresponding to 
+        wavelength `λ`
+    """
+    function temperature(i , λ)
+        return C₂ / (λ * log1p(C₁ / (i * λ^5)))
+    end
+    """
+    bright_temperature(i, λ; ϵ=1.0)
+
+    Evaluates bright temperature for single wavelength pyrometer 
+    `i` - measured intensity ,
+    `λ` - wavelength, μm 
+    `ϵ` - emissivity 
+    
+"""
+function bright_temperature(i, λ; ϵ=1.0)
+        return C₂ / (λ * log1p(ϵ * C₁ / (i * λ^5)))
     end
 """
     ∇ₗibb(λ,T)
@@ -644,6 +670,31 @@ function power(T)
         # integral intencity of BB at temperature T
         return σ*(T^4)/π
     end
+    """
+    ∇ₜpower(T)
+
+    Integral  (over the wavelength) intensity 
+    derivative of BB (radiance)  at temperature T
+
+    Units: W/(m²⋅sr⋅K)
+
+    Input:
+        T - temperature, K
+"""
+    ∇ₜpower(T) = 4*σ*(T^3)/π
+
+    """
+    ∇²ₜpower(T)
+
+    Integral  (over the wavelength) intensity 
+    second derivative of BB (radiance)  at temperature T
+
+    Units: W/(m²⋅sr⋅K)
+
+    Input:
+        T - temperature, K
+"""
+∇²ₜpower(T) = 12.0 * σ * (T^2) / pi
     """
     Dₜibb!(input_tuple, λ::AbstractVector,T)
 
@@ -762,8 +813,34 @@ function Dₜibb(λ::AbstractVector,T::AbstractVector)
         tol - intergation tolerance
 """
 function band_power(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
-        return power(T)*∫ibbₗ(T;λₗ=λₗ,λᵣ=λᵣ,tol=tol)
+        return power(T)*∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol)
     end
+
+    """
+    ∇ₜband_power(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
+
+    Total bb with temperature T integral intensity derivative 
+    within (in-band radiance), [W/(m²⋅sr⋅K)]
+    the spectral range λₗ...λᵣ (by default the range is 0...inf)
+    tol - tolerance of integration
+
+    Input:
+        T - temperature,Kelvins
+        (optional)
+        λₗ - left wavelength boundary, μm
+        λᵣ - right wavelength boundary, μm
+        tol - intergation tolerance
+"""
+function ∇ₜband_power(T;λₗ=0.0,λᵣ=Inf,tol=1e-8)
+        return ∇ₜpower(T) * ∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol) + power(T) * ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
+    end
+
+
+ function ∇²ₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+        return  ∇²ₜpower(T) * ∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol) +
+                2* ∇ₜpower(T) * ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ ) + 
+                power(T) * ∇²ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
+    end   
     """
     ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
 
@@ -777,28 +854,30 @@ function band_power(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
         λᵣ - right wavelength boundary, μm
         tol - intergation tolerance
 """
-function ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
+function ∫ibbₗ(T::Q; λₗ=0.0 , λᵣ=Inf , tol=1e-8) where Q
         # calculates the integral of spectral intencity over the wavelength
-        @assert λₗ!=λᵣ "Bounding wavelengths must be not equal"
+        @assert λₗ!=λᵣ "Bounding wavelengths must  not be equal"
         if λₗ>λᵣ
             (λₗ,λᵣ) = (λᵣ,λₗ)
         end
         if ~isfinite(λᵣ)# the right boundary is infinite
             if λₗ==0.0
-                return 1
+                return one(Q)
             else #integration from fixed wavelength to infinity
-                return ∫ibbₗ(T)- ∫ibbₗ(T,λᵣ=λₗ) 
+                return ∫ibbₗ(T)- ∫ibbₗ(T , λᵣ=λₗ) 
             end
         else# righ wavelength boundary is finite
             if λₗ==0.0# integration from zero to fixed wavelength
                 n=1
-                ϵ=tol*100
+                ϵ = tol * 100
                 summation=0.0
                 a = C₂/(λᵣ*T)
-                while  (ϵ>tol)&&(n<1e4) 
+                while  (ϵ > tol) && (n < 1e4) 
                     etan = a*n
-                    summation+=(exp(-etan)/n)*(etan*(etan*(etan + 3.0) + 6.0) + 6.0)/(n^3) # there was a mistake 
+                    ϵ = (exp(-etan)/n)*(etan*(etan*(etan + 3.0) + 6.0) + 6.0)/(n^3) # there was a mistake 
+                    summation+=ϵ
                     n+=1;
+                    #@show ϵ
                 end
                 return 15*summation/(pi^4)
             else# both wavelength resions are limited 
@@ -806,12 +885,95 @@ function ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
             end
         end
     end
+
+
+    """
+    ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
+
+    Relative (with respect to the integral power in the whole spectrum)
+    integral intensity derivative of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
+
+    Input:
+        T - temperature,Kelvins
+        (optional)
+        λₗ - left wavelength boundary, μm
+        λᵣ - right wavelength boundary, μm
+        tol - intergation tolerance
+"""
+function ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
+            @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
+            if λₗ > λᵣ
+                (λₗ, λᵣ) = (λᵣ, λₗ)
+            end
+            
+            xᵣ = (λᵣ == 0.0 || !isfinite(λᵣ)) ? 0.0 : C₂ / (λᵣ * T)
+            xₗ = (λₗ == 0.0 || !isfinite(λₗ)) ? 0.0 : C₂ / (λₗ * T)
+
+            termᵣ = xᵣ == 0.0 ? 0.0 : (xᵣ^4) / expm1(xᵣ)
+            termₗ = xₗ == 0.0 ? 0.0 : (xₗ^4) / expm1(xₗ)
+
+            return (15.0 / (pi^4 * T)) * (termᵣ - termₗ)
+    end
+
+        """
+        ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
+
+        Relative (with respect to the integral power in the whole spectrum)
+        integral intensity second derivative of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
+
+        Input:
+            T - temperature,Kelvins
+            (optional)
+            λₗ - left wavelength boundary, μm
+            λᵣ - right wavelength boundary, μm
+            tol - intergation tolerance
+    """
+    function ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf, C₂=14387.7688)
+        @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
+        if λₗ > λᵣ
+            (λₗ, λᵣ) = (λᵣ, λₗ)
+        end
+
+        xₗ = (λₗ == 0.0 || !isfinite(λₗ)) ? 0.0 : C₂ / (λₗ * T)
+        xᵣ = (λᵣ == 0.0 || !isfinite(λᵣ)) ? 0.0 : C₂ / (λᵣ * T)
+
+        termₗ = 0.0
+        if xₗ > 0.0
+            expm1_xₗ = expm1(xₗ)
+            if isfinite(expm1_xₗ)
+                termₗ = (xₗ^4 / expm1_xₗ) * (xₗ * exp(xₗ) / expm1_xₗ - 5.0)
+            end
+        end
+        termᵣ = 0.0
+        if xᵣ > 0.0
+            expm1_xᵣ = expm1(xᵣ)
+            if isfinite(expm1_xᵣ)
+                termᵣ = (xᵣ^4 / expm1_xᵣ) * (xᵣ * exp(xᵣ) / expm1_xᵣ - 5.0)
+            end
+        end
+        return (15.0 / (pi^4 * T^2)) * (termᵣ - termₗ)
+    end
+        """
+        attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector;  tol=1e-6)
+
+    Evaluates the integrated band power of BB with temperature `T` reaching the detector, 
+    accounting for the spectral transmittance profile `τ(λ)`.
+    Input:
+        T - temeperature , K 
+        τ - transmittance
+        λ - wavelength , μm
+    """
+    function attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector; g=ibb, tol=1e-6)
+        @assert length(λ) == length(τ) "Vectors λ and τ must have the same length"    
+        τ_avg = weighted_average(τ, λ, T, g, identity)
+        return  τ_avg * band_power(T; λₗ=λ[begin], λᵣ=λ[end], tol=tol)
+    end
     """
     units(f::Function)
 
     returns units string of output quantity  return 
 """
-function units(f::Function)  error(DomainError(f,"This function is unsupported")) end
+function units(f::Function)  error(DomainError(f,"This function is not supported")) end
 
 units(::typeof(ibb)) = "W/(m²⋅sr⋅μm)" 
 units(::typeof(∇ₜibb)) = "W/(m²⋅sr⋅μm⋅K)"

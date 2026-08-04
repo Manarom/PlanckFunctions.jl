@@ -16,6 +16,7 @@ spectrum #
     # Write your tests here.
     for point in values(TestingData.benchmark_data) #iterating over data for various temperatures
         @show T = point.temperature
+        @test T ≈ PlanckFunctions.temperature(PlanckFunctions.ibb(1.0 , T),1.0)
         λₗ = point.lower #lower wavelength
         λᵣ = point.upper #upper wavelength
         sp = point.spectrum 

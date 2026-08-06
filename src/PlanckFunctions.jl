@@ -1,6 +1,8 @@
 # PlanckFunctions and its derivatives all tempeatures should be in Kelvins, all wavelengths in μm
 module PlanckFunctions
+    using ChainRulesCore
     export  Dₜibb!,
+            Dₜibb,
             ∫ibbₗ,
             Tₖ, 
             ibb,
@@ -10,19 +12,24 @@ module PlanckFunctions
             ∇²ₜibb,
             ∇²ₜibb!,
             ∇²ₗibb,
-            a₁₂₃!,
             power,
             band_power,
             ∇ₜpower,
             ∇ₜband_power,
+            ∇²ₜband_power,
+            Dₜband_power,
+            spectral_ratio,
+            ∇ₜspectral_ratio,
+            ∇²ₜspectral_ratio, 
+            Dₜspectral_ratio,
+            spectral_band_ratio,
+            ∇ₜspectral_band_ratio,
+            ∇²ₜspectral_band_ratio, 
+            Dₜspectral_band_ratio,          
             planck_averaged,
             planck_averaged_attenuation,
             rosseland_averaged_attenuation,
-            a₁₂₃,
-            ∇ₜ,
-            ∇²ₜ,
-            ∇ₗ,
-            ∇²ₗ
+            weighted_average
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
@@ -96,11 +103,15 @@ module PlanckFunctions
 """
     a₁₂₃(λ::Float64,T::Float64)
 
-    Returns tuple of three values:
+# Arguments:
 
-    1 - a1 = C₂/(λ*T)
-    2 - a2 = 1/expm1(a1)
-    3 - a3 = exp(a1)*a2
+`amat` - matrix of intermediate coefficients size [Nx3]
+`λ` - wavelength , μm,  [Nx0]
+`T` - temperature,  K
+
+Returns tuple:
+
+(`a1 = C₂/(λ*T)`, `a2 = 1/expm1(a1)`, `a3 = exp(a1)*a2`)
 """
 function  a₁₂₃(λ::Number , T::F) where F <: Number
     a1 = C₂/(λ*T)
@@ -109,17 +120,19 @@ function  a₁₂₃(λ::Number , T::F) where F <: Number
     return isnan(a3) ? (a1 , a2 , one(F)) : (a1 , a2 , a3)
 end
 """
-    a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Float64)
+    a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Number)
 
-    In-place filling of the intermediate matrix
-    a₁=C₂/(λ*T)  - amat first column
-    a₂ = 1/(eᵃ¹-1)  - amat second column 
-    a₃ = eᵃ¹/(eᵃ¹-1) - amat third column
+In-place filling of the intermediate matrix
+`a₁=C₂/(λ*T)`  - amat first column
+`a₂ = 1/(eᵃ¹-1)`  - amat second column 
+`a₃ = eᵃ¹/(eᵃ¹-1)` - amat third column
 
-    Input:
-        amat - matrix of intermediate coefficients size [Nx3]
-        λ - wavelength in μm,  [Nx0]
-        T - temperature in Kelvins
+# Arguments:
+
+`amat` - matrix of intermediate coefficients size [Nx3],
+`λ` - wavelength , μm,  [Nx0],
+`T` - temperature,  K,
+
 """
 function a₁₂₃!(amat::AbstractMatrix , λ::AbstractVector , T::Number)
     # TRY VIEW WITH broadcating
@@ -136,11 +149,13 @@ end
     ibb(λ,T)
 
     Blackbody spectral intensity (spectral radiance), [W/m²⋅sr⋅μm]
-    Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1) , where a₁=C₂/(λ*T)
+   ` Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` ,
+   `a₁=C₂/(λ*T)`
 
-    Input:
-        λ - wavelength in μm
-        T - temperature in Kelvins
+# Arguments:
+
+`λ` - wavelength in μm
+`T` - temperature in Kelvins
 """
     ibb(λ , T) = ( C₁/expm1( C₂/(λ*T) ) )*λ^-5
     ibb(λ::AbstractVector  , T::Number) = ibb.(λ , T)
@@ -149,13 +164,15 @@ end
 """
     ibb(λ::AbstractVector,amat::AbstractMatrix)
 
-    Blackbody spectral intensity (spectral radiance)  with intermediate matrix provided externally, [W/m²⋅sr⋅μm]
-    Ibb =  C₁*(λ⁻⁵)*a₂ , where
-    a₁=C₂/(λ*T)  - amat first column
-    a₂ = 1/(eᵃ¹-1)  - amat second column 
-    Input:
-        amat - matrix of intermediate coefficients,  [Nx3]
-        λ - wavelength in μm,  [Nx0]
+Blackbody spectral intensity (spectral radiance)  with intermediate matrix provided externally, [W/m²⋅sr⋅μm]
+`Ibb =  C₁*(λ⁻⁵)*a₂` , 
+`a₁=C₂/(λ*T)`  - amat first column, 
+`a₂ = 1/(eᵃ¹-1)`  - amat second column 
+
+# Arguments:
+
+`amat` - matrix of intermediate coefficients,  [Nx3]
+`λ` - wavelength in μm,  [Nx0]
 """
     function ibb(λ::AbstractVector , amat::AbstractMatrix) # internal version with provided coefficients matrix
         a2 = @view amat[: , 2]
@@ -164,11 +181,13 @@ end
         """
         ibb(λ::AbstractVector,T::AbstractVector)
 
-        Blackbody spectral intensity (spectral radiance),  [W/m²⋅sr⋅μm]
-        Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1) , where a₁=C₂/(λ*T)
-        Input:
-            λ - wavelength in μm, [Nx0]
-            T - temperature in Kelvins [Mx0]
+Blackbody spectral intensity (spectral radiance),  [W/m²⋅sr⋅μm]
+`Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` , where `a₁=C₂/(λ*T)`
+
+# Arguments:
+
+`λ` - wavelength in μm, [Nx0]
+`T` - temperature in Kelvins [Mx0]
 
     """
     ibb(λ::AbstractVector , T::AbstractVector) =  @. (C₁/expm1(C₂/(λ*$transpose(T))))*λ^-5
@@ -178,11 +197,13 @@ end
         ibb!(i::AbstractVector , λ::AbstractVector , T::Number)
         
         In-place blackbody intensity,  [W/m²⋅sr⋅μm]
-        Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1) , where a₁=C₂/(λ*T)
-        Input:
-            i - bb intensity vector, [Nx0]
-            λ - wavelength in μm, [Nx0]
-            T - temperature in Kelvins
+        `Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` , where `a₁=C₂/(λT)`
+
+# Arguments:
+
+`i` - bb intensity vector, [Nx0]
+`λ` - wavelength in μm, [Nx0]
+`T` - temperature in Kelvins
     """
     ibb!(i::AbstractVector , λ::AbstractVector , T::Number) =  @. i = ibb(λ , T)
 
@@ -190,15 +211,16 @@ end
     """
         ibb!(i::AbstractVector , λ::AbstractVector , amat::AbstractMatrix)
         
-    In-place blackbody intensity with intermediate coefficients provided externally, [W/m2-sr-mkm]
-    Ibb =  C₁*(λ⁻⁵)*a₂ , where
-    a₁=C₂/(λ*T)  - amat first column
-    a₂ = 1/(eᵃ¹-1)  - amat second column 
+In-place blackbody intensity with intermediate coefficients provided externally, [W/m2-sr-mkm]
+`Ibb =  C₁*(λ⁻⁵)*a₂` , where
+`a₁=C₂/(λ*T)`  - amat first column
+`a₂ = 1/(eᵃ¹-1)`  - amat second column 
 
-    Input:
-        i - BB intensity, [Nx0]
-        λ - wavelength in μm,  [Nx0]
-        amat - matrix of intermediate coefficients,  [Nx3]
+# Arguments:
+
+`i` - BB intensity, [Nx0]
+`λ` - wavelength in μm,  [Nx0]
+`amat` - matrix of intermediate coefficients,  [Nx3]
     """
     function ibb!(i::AbstractVector , λ::AbstractVector , amat::AbstractMatrix) # this version is used in emissivity approximation 
             a2 = @view amat[: , 2] # Ibb = (λ⁻⁵)* C₁*a₂
@@ -206,17 +228,19 @@ end
         end   
 
     """
-        ∇ₜibb(λ,T)
+            ∇ₜibb(λ,T)
 
-        BB intensity first derivative with respect to temperature
-        dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))
-        a₁=C₂/(λ*T)
-        a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-        a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-        dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
-        Input:
-            λ - wavelength in μm
-            T - temperature in Kelvins
+BB intensity first derivative with respect to temperature
+dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))
+`a₁=C₂/(λ*T)`
+`a₂ = 1/(eᵃ¹-1)`   #  1/expm1(a1)
+`a₃ = eᵃ¹/(eᵃ¹-1)` #  exp(a)/expm1(a)
+dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
+
+# Arguments:
+
+`λ` - wavelength, μm
+`T` - temperature, K
     """
     ∇ₜibb(λ , T) = prod(a₁₂₃(λ , T)) * C₁/(T * λ^5)
     ∇ₜibb(λ::AbstractVector , T::AbstractVector) = @. ∇ₜibb(λ , $transpose(T))    
@@ -224,17 +248,20 @@ end
     """
     ∇ₜibb(λ::AbstractVector,T,amat::AbstractMatrix)
 
-    BB intensity first derivative with respect to temperature
-    with externally provided matrix of intermediate coefficients
-    dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   
-    a₃ = eᵃ¹/(eᵃ¹-1) 
-    dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
-    Input:
-        λ - wavelength in μm, [Nx0]
-        T - temperature in Kelvins
-        amat - matrix of intermediate coefficients, [Nx3]
+BB intensity first derivative with respect to temperature
+with externally provided matrix of intermediate coefficients
+`dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))`
+`a₁=C₂/(λ*T)`
+`a₂ = 1/(eᵃ¹-1)`   
+`a₃ = eᵃ¹/(eᵃ¹-1)` 
+`dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))`
+
+# Arguments:
+
+`λ` - wavelength in μm, [Nx0]
+`T` - temperature in Kelvins
+`amat` - matrix of intermediate coefficients, [Nx3]
+
 """
 function ∇ₜibb(λ::AbstractVector , T::Number , amat::AbstractMatrix)
         return C₁*prod(amat; dims=2)./(T*λ.^5)
@@ -242,15 +269,17 @@ function ∇ₜibb(λ::AbstractVector , T::Number , amat::AbstractMatrix)
     """
     ∇ₜibb!(g::AbstractMatrix , λ::AbstractVector , T::AbstractVector)
 
-    In-place BB intensity first derivative with respect to temperature
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
-    Input:
-        g - vector to be filled, [Nx0]
-        λ - wavelength in μm, [Nx0]
-        T - temperature in Kelvins     
+In-place BB intensity first derivative with respect to temperature
+`a₁=C₂/(λ*T)`
+`a₂ = 1/(eᵃ¹-1)`   
+`a₃ = eᵃ¹/(eᵃ¹-1)` 
+`dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))`
+
+# Arguments:
+
+`g` - vector to be filled, [Nx0]
+`λ` - wavelength in μm, [Nx0]
+`T` - temperature in Kelvins     
 """
 function ∇ₜibb!(g::AbstractMatrix , λ::AbstractVector , T::AbstractVector)
         # instance version of Planck function first derivative with respect to T
@@ -267,20 +296,20 @@ function ∇ₜibb!(g::AbstractMatrix , λ::AbstractVector , T::AbstractVector)
     """
     ∇ₜibb!(g::AbstractVector , λ::AbstractVector , T , amat::AbstractMatrix)
 
-    In-place bb intensity first derivative with respect to temperature
-    with externally provided amat  - matrix with columns a₁,a₂,a₃
+In-place bb intensity first derivative with respect to temperature
+with externally provided amat  - matrix with columns a₁,a₂,a₃
 
-    dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
+`dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))`,
+`a₁=C₂/(λ*T)` ,
+`a₂ = 1/(eᵃ¹-1)`   ,
+`a₃ = eᵃ¹/(eᵃ¹-1)` ,
+`dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))`,
 
-    Input:
-        g - to be filled, [Nx0]
-        λ - wavelength in μm, [Nx0]
-        T - temperature in Kelvins
-        amat - matrix of intermediate coefficients, [Nx3]
+# Arguments:
+g - to be filled, [Nx0]
+λ - wavelength in μm, [Nx0]
+T - temperature in Kelvins
+amat - matrix of intermediate coefficients, [Nx3]
 """
 function ∇ₜibb!(g::AbstractVector , λ::AbstractVector , T , amat::AbstractMatrix)# for fixed value of temperature
         # instance version of Planck function first derivative with respect to T
@@ -293,23 +322,23 @@ function ∇ₜibb!(g::AbstractVector , λ::AbstractVector , T , amat::AbstractM
     """
     ∇ₜibb!(g::AbstractVector , T , amat::AbstractMatrix , bb_intensity::AbstractVector)
 
-    In-place bb intensity first derivative with respect to temperature
-    with externally provided both `amat`  - matrix with columns a₁,a₂,a₃
-    and `bb_intensity`
+In-place bb intensity first derivative with respect to temperature
+with externally provided both `amat`  - matrix with columns a₁,a₂,a₃
+and `bb_intensity`
 
-    dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
-    as far as Ibb = C₁*a₂/λ⁵
-    dIbb/dT = a₃*a₁*C₁*(a₂/λ⁵)*(1/T)=a₃*a₁*Ibb/T
+dIbb/dT = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T²))
+a₁=C₂/(λ*T)
+a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
+a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
+dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T))
+as far as Ibb = C₁*a₂/λ⁵
+dIbb/dT = a₃*a₁*C₁*(a₂/λ⁵)*(1/T)=a₃*a₁*Ibb/T
 
-    Input:
-        g - to be filled, [Nx0]
-        λ - wavelength in μm, [Nx0]
-        T - temperature in Kelvins
-        amat - matrix of intermediate coefficients, [Nx3]
+# Arguments:
+g - to be filled, [Nx0]
+λ - wavelength in μm, [Nx0]
+T - temperature in Kelvins
+amat - matrix of intermediate coefficients, [Nx3]
 """
 function ∇ₜibb!(g::AbstractVector , T , amat::AbstractMatrix , bb_intensity::AbstractVector)
         #t = T[1]
@@ -321,18 +350,20 @@ function ∇ₜibb!(g::AbstractVector , T , amat::AbstractMatrix , bb_intensity:
 """
     ∇²ₜibb(λ,T)
 
-    BB intensity second derivative with respect to temperature
+BB intensity second derivative with respect to temperature
 
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]` ,
 
-    Input :
-                λ - wavelength in μm
-                T - tmperature in Kelvins         
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]`,
+`a₁=C₂/(λ*T)`,
+`a₂ = 1/(eᵃ¹-1)`,  
+`a₃ = eᵃ¹/(eᵃ¹-1)` ,
+
+`d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]`
+
+# Arguments :
+λ - wavelength in μm
+T - tmperature in Kelvins         
 """
     function ∇²ₜibb(λ,T)
         (a1 , a2 , a3) = a₁₂₃(λ,T)#ibb = C₁*a[2]*(l^-5)
@@ -342,31 +373,33 @@ function ∇ₜibb!(g::AbstractVector , T , amat::AbstractMatrix , bb_intensity:
     """
     ∇²ₜibb!(h::AbstractVector , λ::AbstractVector , T::Number)
 
-    In-place bb intensity second order derivative with respect to temperature
+In-place bb intensity second order derivative with respect to temperature
 
-    Input :
-    h  - to be filled, [Nx0]
-    λ - wavelength in μm, [Nx0]
-    T - tmperature in Kelvins  
+# Arguments :
+h  - to be filled, [Nx0]
+λ - wavelength in μm, [Nx0]
+T - tmperature in Kelvins  
 """
 ∇²ₜibb!(h::AbstractVector , λ::AbstractVector , T::Number)  = @. h =  ∇²ₜibb(λ,T)# secpnd derivative for the fixed value of temperature
 
     """
     ∇²ₜibb!(h::AbstractMatrix{Float64} , λ::AbstractVector{Float64}, T::AbstractVector{Float64})
 
-    In-place bb intensity second order derivative with respect to temperature
+In-place bb intensity second order derivative with respect to temperature
 
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]`,
 
-    Input :
-        h  - to be filled, [Nx0]
-        λ - wavelength in μm, [Nx0]
-        T - tmperature in Kelvins   
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]`,
+`a₁=C₂/(λ*T)`,
+`a₂ = 1/(eᵃ¹-1) `  ,
+`a₃ = eᵃ¹/(eᵃ¹-1)` ,
+
+`d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]`
+
+# Arguments :
+`h`  - to be filled, [Nx0]
+`λ` - wavelength in μm, [Nx0]
+`T `- tmperature in Kelvins   
 """
 function ∇²ₜibb!(h::AbstractMatrix , λ::AbstractVector , T::AbstractVector)
         size(h) == (length(λ), length(T)) || throw(DimensionMismatch())
@@ -380,21 +413,24 @@ function ∇²ₜibb!(h::AbstractMatrix , λ::AbstractVector , T::AbstractVector
     """
     ∇²ₜibb!(h::AbstractVector{Float64}, λ::AbstractVector{Float64} , T::Float64 ,amat::AbstractMatrix{Float64})::Nothing
 
-    In-place bb intensity second order derivative with respect to temperature with 
-    intermediate matrix provided externally
+In-place bb intensity second order derivative with respect to temperature with 
+intermediate matrix provided externally
 
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]`,
 
-    Input :
-    h  - to be filled, [Nx0]
-    λ - wavelength in μm, [Nx0]
-    T - temperature in Kelvins
-    amat - matrix of intermediate coefficients,  [Nx3]
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]`,
+`a₁=C₂/(λ*T)`,
+`a₂ = 1/(eᵃ¹-1)`   ,
+`a₃ = eᵃ¹/(eᵃ¹-1)` ,
+
+`d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]`
+
+# Arguments :
+
+`h`  - to be filled, [Nx0]
+`λ `- wavelength in μm, [Nx0]
+`T` - temperature in Kelvins
+`amat` - matrix of intermediate coefficients,  [Nx3]
 """
 function ∇²ₜibb!(h::AbstractVector , λ::AbstractVector , T::Number , amat::AbstractMatrix)
             (a1, a2, a3) = ntuple(i -> view(amat, :, i), 3)
@@ -404,28 +440,32 @@ function ∇²ₜibb!(h::AbstractVector , λ::AbstractVector , T::Number , amat:
     """
     ∇²ₜibb!(h::AbstractVector{Float64},T::Float64,amat::AbstractMatrix{Float64},∇i::AbstractVector{Float64})::Nothing
 
-    In-place bb intensity second order derivative with respect to temperature 
-    with provided both the intermediate matrix amat and the the Planck function first derivative
+In-place bb intensity second order derivative with respect to temperature 
+with provided both the intermediate matrix amat and the the Planck function first derivative
 
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]
-    d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]
-    a₁=C₂/(λ*T)
-    a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-    a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-    d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]
-        as far as 
-            Ibb = (λ⁻⁵)* C₁*a₂
-        and 
-            dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T)) = a₃*a₁*Ibb/T 
-        hense
-            d²Ibb/dT² = C₁*a₂*a₃*a₁*(1/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2] 
-                = [a₃*a₁*Ibb/T^2]*[a₁*(2*a₃ - 1))-2] 
-                    = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] 
-    Input :
-            h  - to be filled, [Nx0]
-            λ - wavelength in μm, [Nx0]
-            amat - matrix of intermediate coefficients,  [Nx3]
-            ∇i - vector of bb intensity first derivatives, [Nx0]
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]`
+
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]`
+`a₁=C₂/(λ*T)`
+`a₂ = 1/(eᵃ¹-1)`   ,
+`a₃ = eᵃ¹/(eᵃ¹-1)` ,
+`d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]`
+as far as 
+    `Ibb = (λ⁻⁵)* C₁*a₂`
+and 
+    `dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T)) = a₃*a₁*Ibb/T` 
+hense
+
+`    d²Ibb/dT² = C₁*a₂*a₃*a₁*(1/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2] 
+        = [a₃*a₁*Ibb/T^2]*[a₁*(2*a₃ - 1))-2] 
+            = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] `
+
+# Arguments :
+
+`h`  - to be filled, [Nx0]
+`λ` - wavelength in μm, [Nx0]
+`amat` - matrix of intermediate coefficients,  [Nx3]
+`∇i` - vector of bb intensity first derivatives, [Nx0]
 """
 function ∇²ₜibb!(        h::AbstractVector , 
                         T::Number , 
@@ -441,31 +481,31 @@ function ∇²ₜibb!(        h::AbstractVector ,
     """
     rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
 
-    Evaluates the Rosseland-averaged spectral attenuation coefficient (the summation of
-    spectral scattering and absorption coefficients) α(λ) for temperature T:
+Evaluates the Rosseland-averaged spectral attenuation coefficient (the summation of
+spectral scattering and absorption coefficients) `α(λ)` for temperature `T`:
 
-    αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ/∫∇ₜibb(λ,T)dλ)⁻¹  
+`αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ/∫∇ₜibb(λ,T)dλ)⁻¹`  
 """
 rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,∇ₜibb,inv))
 
 """
     planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
 
-    Evaluates the Planck-averaged spectral attenuation coefficient (the summation of
-    spectral scattering and absorption coefficients) α(λ) for temperature T:
+Planck-averaged spectral attenuation coefficient (the summation of
+spectral scattering and absorption coefficients) α(λ) for temperature T:
 
-    αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ/∫ibb(λ,T)dλ)⁻¹  
+`αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ/∫ibb(λ,T)dλ)⁻¹`   
 """
 planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,ibb,inv)) #identity
 
 """
     planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number)
 
-    Evaluates the Planck-averaged value of x(λ) for temperature T:
+Evaluates the Planck-averaged value of `x(λ)` for temperature `T`:
 
-    xᵣ = ∫x(λ)ibb(λ,T)dλ/∫ibb(λ,T)dλ 
+`xᵣ = ∫x(λ)ibb(λ,T)dλ/∫ibb(λ,T)dλ `
 
-    Can be used for example to evaluate the integral emissiovity from measured spectral emissivity
+E.g. can be used to evaluate the integral  from  spectral emissivity
 """
 planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x,λ,T,ibb,identity)
 """
@@ -475,13 +515,14 @@ planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_aver
                         g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
                         f::F = identity) where F <: Function
 
-    Generic function to evaluate the averaged value of some `f(x)` function of variable `x` dependent
-    on wavelength `λ` for temperature `T`. 
-    Uses linear approximation for the discrete variable and square polynomial 
-    for the g function 
+Generic function to evaluate the averaged value of some `f(x)` function of variable `x` dependent
+on wavelength `λ` for temperature `T`. 
+Uses linear approximation for the discrete variable and square polynomial 
+for the g function 
 
-    xᵣ = ∫f(x)g(λ,T)dλ/∫g(λ,T)dλ, the default value of f is `identity`,but, e.g. if f = inv:
-    xᵣ = ∫g(λ,T)/x(λ)dλ/∫g(λ,T)dλ
+`xᵣ = ∫f(x)g(λ,T)dλ/∫g(λ,T)dλ`
+the default value of f is `identity`, e.g. if f = inv:
+`xᵣ = ∫g(λ,T)/x(λ)dλ/∫g(λ,T)dλ`
 
 """
 function weighted_average(α::AbstractVector, 
@@ -541,11 +582,12 @@ end
     """
     λₘ(T)
 
-    The wavelength (in μm) of bb intensity maximum vs temperature T 
-    argmax(Planck(T))  - Wien's displacement law
+The wavelength (in μm) of bb intensity maximum vs temperature `T` 
+`argmax(Planck(T))`  - Wien's displacement law
 
-    Input:
-        T - temperature in Kelvins
+# Arguments:
+
+`T` - temperature in Kelvins
 """
     function λₘ(T)
         # maximum wavelength of BB intencity in μm at temperature T (in Kelvins)
@@ -554,7 +596,7 @@ end
     """
     tₘ(λ)
 
-    The temperature of BB having maximum at wavelength λ in Kelvins
+The temperature of BB having maximum at wavelength `λ` in Kelvins
 """
     function tₘ(λ)
         # temperature (in Kelvins) of BB with intencity maximum at λ μm  
@@ -563,8 +605,8 @@ end
         """
         temperature(i)
 
-       The bb temperature for intensity `i` corresponding to 
-        wavelength `λ`
+The bb temperature for intensity `i` corresponding to 
+wavelength `λ` 
     """
     function temperature(i , λ)
         return C₂ / (λ * log1p(C₁ / (i * λ^5)))
@@ -572,10 +614,10 @@ end
     """
     bright_temperature(i, λ; ϵ=1.0)
 
-    Evaluates bright temperature for single wavelength pyrometer 
-    `i` - measured intensity ,
-    `λ` - wavelength, μm 
-    `ϵ` - emissivity 
+Evaluates bright temperature for single wavelength pyrometer 
+`i` - measured intensity ,
+`λ` - wavelength, μm 
+`ϵ` - emissivity 
     
 """
 function bright_temperature(i, λ; ϵ=1.0)
@@ -585,11 +627,11 @@ function bright_temperature(i, λ; ϵ=1.0)
     ∇ₗibb(λ,T)
 
 
-    BB intensity first derivative with respect to the wavelength
+BB intensity first derivative with respect to the wavelength
 
-    Input:
-        λ - wavelength, μm
-        T - temperature, K
+# Arguments:
+`λ` - wavelength, μm
+`T` - temperature, K
 """
     function ∇ₗibb(λ,T)
         (a1 , a2 , a3) = a₁₂₃(λ,T)
@@ -599,11 +641,12 @@ function bright_temperature(i, λ; ϵ=1.0)
     """
     ∇²ₗibb(λ,T)
 
-    BB intensity second derivative with respect to the wavelength
+BB intensity second derivative with respect to the wavelength
 
-    Input:
-        λ - wavelength, μm
-        T - temperature, K
+# Arguments:
+
+`λ` - wavelength, μm
+`T` - temperature, K
 """
 function  ∇²ₗibb(λ,T)
         # second derivative of Planck function with respect to wavelength
@@ -614,16 +657,14 @@ function  ∇²ₗibb(λ,T)
     """
     Dₗibb(λ,T)
 
-    Returns a three-element tuple of (1.bb intensity,2.its first and 3.second derivative 
-    with respect to the wavelentgh)
+Returns a three-element tuple of (1.bb intensity,2.its first and 3.second derivative 
+with respect to the wavelentgh)
 
-    Input:
-        λ - wavelength, μm
-        T - temperature, K
+# Arguments:
+`λ` - wavelength, μm
+`T` - temperature, K
 """
 function Dₗibb(λ , T)
-        # methods returns PLanck function and its derivatives with respect to the wavelength
-        # output is a tuple with (Planckfunction, Its first derivative with respect to the wavelength, Its second derivative with respect to the wavelength)
         (a1 , a2 , a3) = a₁₂₃(λ,T)
         i = C₁ * a2 *((1/λ)^5)
         return (
@@ -650,40 +691,40 @@ function Dₗibb(λ , T)
     """
     power(T)
 
-    Returns integral (over the wavelength) intensity of BB (radiance)  at temperature T
+Integral (over the wavelength) intensity of BB (radiance)  at temperature T
 
-    Units: W/(m²⋅sr)
+Units: W/(m²⋅sr)
 
-    Input:
-        T - temperature, K
+# Arguments:
+`T` - temperature, K
 """
-function power(T)
-        # integral intencity of BB at temperature T
-        return σ*(T^4)/π
-    end
+power(T) = σ*(T^4)/π
+
     """
     ∇ₜpower(T)
 
-    Integral  (over the wavelength) intensity 
-    derivative of BB (radiance)  at temperature T
+Total intensity first
+derivative of BB (radiance)  at temperature T
 
-    Units: W/(m²⋅sr⋅K)
+Units: W/(m²⋅sr⋅K)
 
-    Input:
-        T - temperature, K
+# Arguments:
+
+`T` - temperature, K
+
 """
     ∇ₜpower(T) = 4*σ*(T^3)/π
 
     """
     ∇²ₜpower(T)
 
-    Integral  (over the wavelength) intensity 
-    second derivative of BB (radiance)  at temperature T
+Total  intensity second 
+derivative of BB (radiance)  at temperature T
 
-    Units: W/(m²⋅sr⋅K)
+Units: W/(m²⋅sr⋅K)
 
-    Input:
-        T - temperature, K
+# Arguments:
+`T` - temperature, K
 """
 ∇²ₜpower(T) = 12.0 * σ * (T^2) / pi
     # dummy type to drop setindex
@@ -709,34 +750,29 @@ function power(T)
         return (out1 , out2 , out3)
     end
 
-
+   function Dₜibb( λ::Number, T::Number)
+            a1, a2, a3 = a₁₂₃(λ, T)
+            _i = C₁ * a2 * (λ ^-5)
+            out1 = _i
+            _i2 = a1 * a3 * _i / T
+            out2 = _i2
+            out3 = (a1 * (2.0 * a3 - 1.0) - 2.0) * _i2 / T
+        return (out1 , out2 , out3)
+    end
         """
         Dₜibb!(input_tuple, λ::AbstractVector,T)
 
-        In-place filling the tuple of (bb intensity, its first ,and second ) derivatives with 
-        respect to temperature
-        d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]
-        d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]
-        a₁=C₂/(λ*T)
-        a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-        a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-        d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]
-            as far as 
-                Ibb = (λ⁻⁵)* C₁*a₂
-            and 
-                dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T)) = a₃*a₁*Ibb/T 
-            hense
-                d²Ibb/dT² = C₁*a₂*a₃*a₁*(1/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2] 
-                    = [a₃*a₁*Ibb/T^2]*[a₁*(2*a₃ - 1))-2] 
-                        = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] 
-        Input:
-            input_tuple, {Nx0 vector or nothing , Nx0 vector or nothing, Nx0 vector or nothing}
-            λ - wavelength, μm, [Nx0]
-            T - temperature, K   
-        Out:
-            `input_tuple` filled with ibb , dIbb/dT , d²Ibb/dT²
+In-place filling the tuple of (bb intensity, its first ,and second ) derivatives with 
+respect to temperature
 
-        This version is slightly faster than calling each derivative separately
+# Arguments:
+`input_tuple`, {Nx0 vector or nothing , Nx0 vector or nothing, Nx0 vector or nothing}
+`λ` - wavelength, μm, [Nx0]
+`T` - temperature, K   
+Out:
+`input_tuple` filled with ibb , dIbb/dT , d²Ibb/dT²
+
+This version is slightly faster than calling each derivative separately
     """ 
     Dₜibb!(input_tuple::Tuple{AbstractVector , AbstractVector , AbstractVector}, 
                     λ::AbstractVector , 
@@ -767,29 +803,35 @@ function power(T)
         end
         return input_tuple
     end
+    function Dₜibb(λ::AbstractVector , T::Number) 
+        i = ntuple(_->similar(λ) , 3)
+        return  Dₜibb!(i , λ , T)
+    end
         """
-        Dₜibb(λ::AbstractVector,T::AbstractVector)
+    Dₜibb(λ::AbstractVector,T::AbstractVector)
 
-        Calculates tuple of (Ibb,dIbb/dT,d²Ibb/dT²) calculated according to:
-        d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]
-        d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]
-        a₁=C₂/(λ*T)
-        a₂ = 1/(eᵃ¹-1)   #  1/expm1(a1)
-        a₃ = eᵃ¹/(eᵃ¹-1) #  exp(a)/expm1(a)
-        d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]
-            as far as 
-                Ibb = (λ⁻⁵)* C₁*a₂
-            and 
-                dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T)) = a₃*a₁*Ibb/T 
-            hense
-                d²Ibb/dT² = C₁*a₂*a₃*a₁*(1/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2] 
-                    = [a₃*a₁*Ibb/T^2]*[a₁*(2*a₃ - 1))-2] 
-                        = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2] 
-        Input:
-            λ - wavelength region, μm
-            T - temperature, Kelvins
-        Returns:
-            (Ibb , dIbb/dT , d²Ibb/dT²)
+Calculates tuple of (`Ibb,dIbb/dT,d²Ibb/dT²`) calculated according to:
+
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(C₂/(λ⁶*T³))*[(C₂/(λ*T))*(2*eᵃ¹/(eᵃ¹-1)-1)-2]`,
+`d²Ibb/dT² = C₁*(eᵃ¹/(eᵃ¹-1)²)*(a₁/(λ⁵*T²))*[a₁*(2*eᵃ¹/(eᵃ¹-1) -1)-2]`,
+`a₁=C₂/(λ*T)`,
+`a₂ = 1/(eᵃ¹-1) ` , 
+`a₃ = eᵃ¹/(eᵃ¹-1)` ,
+`d²Ibb/dT² = C₁*a₂*a₃*(a₁/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2]`
+    as far as 
+        `Ibb = (λ⁻⁵)* C₁*a₂`
+    and 
+        `dIbb/dT = C₁*a₃*a₂*a₁*(1/(λ⁵*T)) = a₃*a₁*Ibb/T` 
+    hense
+        `d²Ibb/dT² = C₁*a₂*a₃*a₁*(1/(λ⁵*T²))*[a₁*(2*a₃ - 1))-2] 
+            = [a₃*a₁*Ibb/T^2]*[a₁*(2*a₃ - 1))-2] 
+                = [(dIbb/dT)/T]*[a₁*(2*a₃ - 1))-2]` 
+# Arguments:
+`λ` - wavelength region, μm
+`T` - temperature, Kelvins
+
+# Returns:
+`(Ibb , dIbb/dT , d²Ibb/dT²)`
     """
     function Dₜibb(λ::AbstractVector , T::AbstractVector{Q}) where Q
             # returns spectral intencity and its first and second derivatives with respect to the temperature
@@ -800,16 +842,17 @@ function power(T)
         """
         band_power(T;λₗ=0.0 , λᵣ=Inf , tol=1e-8)
 
-    Total bb with temperature T integral intensity within (in-band radiance), [W/(m²⋅sr)]
-    the spectral range λₗ...λᵣ (by default the range is 0...inf)
-    tol - tolerance of intehration
+Total bb with temperature T integral intensity within (in-band radiance), [W/(m²⋅sr)]
+the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
+tol - tolerance of intehration
 
-    Input:
-        T - temperature,Kelvins
-        (optional)
-        λₗ - left wavelength boundary, μm
-        λᵣ - right wavelength boundary, μm
-        tol - intergation tolerance
+# Arguments:
+
+`T` - temperature,Kelvins
+(optional)
+`λₗ` - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+`tol` - intergation tolerance
     """
     band_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8) = power(T)*∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol)
 
@@ -817,40 +860,120 @@ function power(T)
     """
     ∇ₜband_power(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
 
-        Total bb with temperature T integral intensity derivative 
-    within (in-band radiance), [W/(m²⋅sr⋅K)]
-    the spectral range λₗ...λᵣ (by default the range is 0...inf)
-    tol - tolerance of integration
+Total bb with temperature T integral intensity derivative 
+within (in-band radiance), [W/(m²⋅sr⋅K)]
+the spectral range λₗ...λᵣ (by default the range is 0...inf)
+tol - tolerance of integration
 
-    Input:
-        T - temperature,Kelvins
-        (optional)
-        λₗ - left wavelength boundary, μm
-        λᵣ - right wavelength boundary, μm
-        tol - intergation tolerance
+# Arguments:
+T - temperature,Kelvins
+(optional)
+λₗ - left wavelength boundary, μm
+λᵣ - right wavelength boundary, μm
+tol - intergation tolerance
 """
-function ∇ₜband_power(T; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
-        return ∇ₜpower(T) * ∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol) + power(T) * ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
-    end
+∇ₜband_power(T; λₗ=0.0 , λᵣ=Inf , tol=1e-8) = ∇ₜpower(T) * ∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol) + power(T) * ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
 
+"""
+    ∇ₜband_power(T , band_power_value; λₗ=0.0 , λᵣ=Inf)
 
- function ∇²ₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+Evaluates band_power derivative with respect to temperature with `band_power_value`
+provided externally (this may be usefull if one already has calculated the band_power itself)
+
+# Arguments:
+`T` - temperature,Kelvins
+`band_power_value` - band_power calculated elswhere
+
+(optional)
+`λ`ₗ - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+`tol` - intergation tolerance
+
+"""
+function ∇ₜband_power(T , band_power_value; λₗ=0.0 , λᵣ=Inf) 
+    P = power(T) 
+    return (∇ₜpower(T) * band_power_value/P) + (P * ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ ))
+end
+
+ """
+    ∇²ₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+
+Band power second derivative with respect to temeprature 
+
+# Arguments:
+`T` - temperature,Kelvins
+
+(optional)
+`λ`ₗ - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+`tol` - intergation tolerance
+"""
+function ∇²ₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
         return  ∇²ₜpower(T) * ∫ibbₗ(T; λₗ=λₗ , λᵣ=λᵣ , tol=tol) +
                 2* ∇ₜpower(T) * ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ ) + 
                 power(T) * ∇²ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
-    end   
+    end
+
+    function Dₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+
+        P = power(T)
+        Pt = ∇ₜpower(T)
+        Ptt = ∇²ₜpower(T)
+
+        I = ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ , tol=tol) # this is the most time consuming
+        It = ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
+        Itt = ∇²ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
+
+        bp  = P * I
+        bpt = Pt * I + P * It
+        bptt = Ptt * I + 2.0 * Pt * It + P * Itt
+
+        return (bp , bpt , bptt)
+    end    
+
+  """
+    ∇²ₜband_power(T , band_power_value; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+
+
+Band power second derivative with respect to temeprature with `band_power` 
+value evaluated externally 
+
+# Arguments:
+`T` - temperature,Kelvins
+
+(optional)
+`λ`ₗ - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+`tol` - intergation tolerance
+"""
+function ∇²ₜband_power(T , band_power_value; λₗ=0.0 , λᵣ=Inf)
+    P = power(T)
+    Pt = ∇ₜpower(T)
+
+    # ∇ₜ (power * ∫ibbₗ) = ∇ₜpower * ∫ibbₗ + power * ∇ₜ∫ibbₗ
+    # ∇ₜband_power(T , band_power_value) - ∇ₜpower * ∫ibbₗ = power * ∇ₜ∫ibbₗ
+    # ∇ₜ∫ibbₗ = ( ∇ₜband_power(T , band_power_value) - ∇ₜpower * band_power_value/P)/P
+
+    return  (∇²ₜpower(T) * band_power_value/P) +
+                2.0 * Pt * (( ∇ₜband_power(T , band_power_value ; λₗ=λₗ , λᵣ=λᵣ) - Pt * band_power_value/P )/P) + 
+                P * ∇²ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
+    end      
+    
     """
     ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
 
-    Relative (with respect to the integral power in the whole spectrum)
-    integral intensity of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
+Relative (with respect to the integral power in the whole spectrum)
+integral intensity of bb in the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
 
-    Input:
-        T - temperature,Kelvins
-        (optional)
-        λₗ - left wavelength boundary, μm
-        λᵣ - right wavelength boundary, μm
-        tol - intergation tolerance
+# Arguments:
+
+`T - temperature,Kelvins
+
+(optional)
+
+`λₗ` - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+`tol` - intergation tolerance
 """
 function ∫ibbₗ(T::Q; λₗ=0.0 , λᵣ=Inf , tol=1e-8) where Q
         # calculates the integral of spectral intencity over the wavelength
@@ -885,46 +1008,46 @@ function ∫ibbₗ(T::Q; λₗ=0.0 , λᵣ=Inf , tol=1e-8) where Q
     end
 
 
-    """
-    ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
-
-    Relative (with respect to the integral power in the whole spectrum)
-    integral intensity derivative of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
-
-    Input:
-        T - temperature,Kelvins
-        (optional)
-        λₗ - left wavelength boundary, μm
-        λᵣ - right wavelength boundary, μm
-        tol - intergation tolerance
-"""
-function ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
-            @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
-            if λₗ > λᵣ
-                (λₗ, λᵣ) = (λᵣ, λₗ)
-            end
-            
-            xᵣ =  (λᵣ == 0.0 || !isfinite(λᵣ)) ? 0.0 : C₂ / (λᵣ * T)
-            xₗ  =  (λₗ == 0.0  || !isfinite(λₗ)) ? 0.0 : C₂ / (λₗ * T)
-
-            termᵣ = xᵣ == 0.0 ? 0.0 : (xᵣ^4) / expm1(xᵣ)
-            termₗ = xₗ == 0.0 ? 0.0 : (xₗ^4) / expm1(xₗ)
-
-            return (15.0 / (pi^4 * T)) * (termᵣ - termₗ)
-    end
-
         """
-        ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
+        ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
 
         Relative (with respect to the integral power in the whole spectrum)
-        integral intensity second derivative of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
+        integral intensity derivative of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
 
-        Input:
+        # Arguments:
             T - temperature,Kelvins
             (optional)
             λₗ - left wavelength boundary, μm
             λᵣ - right wavelength boundary, μm
             tol - intergation tolerance
+    """
+    function ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
+                @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
+                if λₗ > λᵣ
+                    (λₗ, λᵣ) = (λᵣ, λₗ)
+                end
+                
+                xᵣ =  (λᵣ == 0.0 || !isfinite(λᵣ)) ? 0.0 : C₂ / (λᵣ * T)
+                xₗ  =  (λₗ == 0.0  || !isfinite(λₗ)) ? 0.0 : C₂ / (λₗ * T)
+
+                termᵣ = xᵣ == 0.0 ? 0.0 : (xᵣ^4) / expm1(xᵣ)
+                termₗ = xₗ == 0.0 ? 0.0 : (xₗ^4) / expm1(xₗ)
+
+                return (15.0 / (pi^4 * T)) * (termᵣ - termₗ)
+        end
+
+        """
+    ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
+
+Relative (with respect to the integral power in the whole spectrum)
+integral intensity second derivative of bb in the spectral range `λₗ...λᵣ` (by default the range is `0...inf`)
+
+# Arguments:
+`T` - temperature,Kelvins
+(optional)
+`λₗ` - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+`tol` - intergation tolerance
     """
     function ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf )
         @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
@@ -954,23 +1077,25 @@ function ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
         """
         attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector;  tol=1e-6)
 
-    Evaluates the integrated band power of BB with temperature `T` reaching the detector, 
-    accounting for the spectral transmittance profile `τ(λ)`.
-    Input:
-        T - temeperature , K 
-        τ - transmittance
-        λ - wavelength , μm
+Evaluates the integrated band power of BB with temperature `T` reaching the detector, 
+accounting for the spectral transmittance profile `τ(λ)`.
+
+# Arguments:
+
+`T` - temeperature , K 
+`τ` - transmittance
+`λ` - wavelength , μm
     """
     function attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector;  tol=1e-6)
         @assert length(λ) == length(τ) "Vectors λ and τ must have the same length"    
         τ_avg = weighted_average(τ , λ , T , ibb , identity)
         return  τ_avg * band_power(T; λₗ=λ[begin], λᵣ=λ[end], tol=tol)
     end
-        """
-        units(f::Function)
+"""
+    units(f::Function)
 
-        returns units string of output quantity  return 
-    """
+returns units string of output quantity  return 
+"""
     function units(f::Function)  error(DomainError(f,"This function is not supported")) end
 
     units(::typeof(ibb)) = "W/(m²⋅sr⋅μm)" 
@@ -1007,7 +1132,177 @@ function ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
             return (a1 * inv_d , a2 * inv_d , a3 * inv_d)
     end
 
-    @inline function fourth_order_polynomial_eval(a1, a2, a3, a4, a5, x)
-        return @evalpoly(x, a1, a2, a3, a4, a5)
-    end
+    @inline fourth_order_polynomial_eval(a1, a2, a3, a4, a5, x) = @evalpoly(x, a1, a2, a3, a4, a5)
+
+        """
+    spectral_ratio(λ1::Number, λ2::Number, T::Number; ; e_slope::Number=1.0)
+
+Calculate the theoretical intensity ratio `R = e_slope * ( Ibb1/Ibb2)`
+between two wavelengths `λ1` and `λ2` at temperature `T`, accounting for the spectral 
+emissivities `e_slope = ε1/ε2`.
+
+# Arguments
+`λ1`- First wavelength (usually the shorter one), in μm.
+`λ2`- Second wavelength (usually the longer one), in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
+
+"""
+spectral_ratio(λ1::Number, λ2::Number, T::Number;  e_slope::Number=1.0) = e_slope *  ibb(λ1 , T) /ibb(λ2 , T)
+
+"""
+    spectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+
+The same as spectral_ratio, but now the band can be wide (not a single wavelength).
+This may be useful for two-color pyrometers when their working regions width cannot be ignored 
+
+# Arguments
+`λ1`- tuple of left and right wavelength of the first band, in μm.
+`λ2`- tuple of left and right wavelength of the second band, in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
+
+"""
+function spectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+   return e_slope *  band_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol) / band_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+end
+"""
+    ∇ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+
+Calculate the theoretical intensity ratio derivative `dR/T =d/dT ( e_slope * ( Ibb1/Ibb2))`
+between two wavelengths `λ1` and `λ2` at temperature `T`, accounting for the spectral 
+emissivities `e_slope = ε1/ε2`.
+
+# Arguments
+`λ1`- First wavelength (usually the shorter one), in μm.
+`λ2`- Second wavelength (usually the longer one), in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0).
+"""
+function ∇ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+    (i1, di1 , _) = Dₜibb(λ1 , T)
+    (i2, di2 , _) = Dₜibb(λ2 , T)
+    return e_slope * (di1 * i2 - di2 * i1 )/i2^2
+end
+
+"""
+    ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+
+    First derivative of two wide spectral band ratio 
+
+# Arguments
+`λ1`- tuple of left and right wavelength of the first band, in μm.
+`λ2`- tuple of left and right wavelength of the second band, in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
+"""
+function ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    (i1, di1 , _) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
+    (i2, di2 , _) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+    return e_slope * (di1 * i2 - di2 * i1 )/i2^2
+end
+"""
+    ∇²ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+
+Spectral ratio second derivative
+
+# Arguments
+`λ1`- First wavelength (usually the shorter one), in μm.
+`λ2`- Second wavelength (usually the longer one), in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0).
+"""
+function ∇²ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+    (i1, di1 , d2i1) = Dₜibb(λ1 , T)
+    (i2, di2 , d2i2) = Dₜibb(λ2 , T)
+    return e_slope * _spectral_ratio_second_derivative(
+                i1, di1, d2i1,
+                i2, di2, d2i2
+    )
+end
+"""
+    ∇²ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+
+Spectral band ratio second derivative
+
+# Arguments
+`λ1`- tuple of left and right wavelength of the first band, in μm.
+`λ2`- tuple of left and right wavelength of the second band, in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
+"""
+function ∇²ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    (i1, di1 , d2i1) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
+    (i2, di2 , d2i2) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+    return e_slope * _spectral_ratio_second_derivative(
+                i1, di1, d2i1,
+                i2, di2, d2i2
+    )
+end
+"""
+    Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+
+All spectral ratio derivatives in one tuple
+
+# Arguments
+`λ1`- First wavelength (usually the shorter one), in μm.
+`λ2`- Second wavelength (usually the longer one), in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0).
+
+"""
+function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+
+    (i1, di1 , d2i1) = Dₜibb(λ1 , T)
+    (i2, di2 , d2i2) = Dₜibb(λ2 , T)
+
+    return (    
+                e_slope * i1/i2 ,
+                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+                e_slope * _spectral_ratio_second_derivative(i1, di1, d2i1,
+                                                            i2, di2, d2i2)
+        )
+end
+"""
+    Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+
+All spectral band ratio derivatives are in one tuple
+
+
+# Arguments
+`λ1`- tuple of left and right wavelength of the first band, in μm.
+`λ2`- tuple of left and right wavelength of the second band, in μm.
+`T`- Absolute temperature, in K.
+`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
+"""
+function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+
+    (i1, di1 , d2i1) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
+    (i2, di2 , d2i2) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+
+    return (    
+                e_slope * i1/i2 ,
+                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+                e_slope * _spectral_ratio_second_derivative(i1, di1, d2i1,
+                                                            i2, di2, d2i2)
+        )
+end
+
+@inline function _spectral_ratio_second_derivative(
+                I1::Number, dI1_dT::Number, d2I1_dT2::Number,
+                I2::Number, dI2_dT::Number, d2I2_dT2::Number
+    )
+    I2_sq = I2 * I2
+    inv_I2_cub = 1.0 / (I2_sq * I2) 
+    
+    numerator = d2I1_dT2 * I2_sq - 
+                I1 * I2 * d2I2_dT2 - 
+                2.0 * dI1_dT * dI2_dT * I2 + 
+                2.0 * I1 * (dI2_dT * dI2_dT)
+                
+    return numerator * inv_I2_cub
+end
+
+include("_chain_rules.jl")
+
 end

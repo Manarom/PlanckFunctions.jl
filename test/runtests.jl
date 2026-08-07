@@ -57,7 +57,7 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
             band_ration(T) = PF.band_power(T , λₗ = 1.0 , λᵣ=6.0 )/PF.band_power(T , λₗ = 4.0 , λᵣ=8.0 )
             @test PF.∇ₜspectral_band_ratio((1.0 , 6.0) , (4.0 , 8.0) , T) ≈ dfdx(band_ration , T) atol = 1e-5
             @test PF.∇²ₜspectral_band_ratio((1.0 , 6.0) , (4.0 , 8.0) , T) ≈ d2fdx2(band_ration , T) atol = 1e-5
-            
+
             (i1 , i2 , i3) = (band_ration(T) , 
                             PF.∇ₜspectral_band_ratio((1.0 , 6.0) , (4.0 , 8.0) , T) , 
                             PF.∇²ₜspectral_band_ratio((1.0 , 6.0) , (4.0 , 8.0) , T))
@@ -133,6 +133,9 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
                 (nt , 1.0), PF.band_power , T ; λₗ = 1.0 , λᵣ=6.0
             ))
 
+            @test all((PF.spectral_ratio(1.0 , 6.0 , T , e_slope = 1.05) , PF.∇ₜspectral_ratio(1.0 , 6.0 , T, e_slope = 1.05)) .≈ ChainRulesCore.frule(
+                (nt , nt , nt ,  1.0), PF.spectral_ratio ,1.0 , 6.0 ,  T ; e_slope = 1.05
+            ))
 
         println("ok")
 

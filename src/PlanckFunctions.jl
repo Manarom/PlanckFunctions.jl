@@ -750,7 +750,12 @@ Units: W/(m²⋅sr⋅K)
         return (out1 , out2 , out3)
     end
 
-   function Dₜibb( λ::Number, T::Number)
+   """
+    Dₜibb( λ::Number, T::Number)
+
+returns a tuple of (value, first derivative, second derivative)
+"""
+function Dₜibb( λ::Number, T::Number)
             a1, a2, a3 = a₁₂₃(λ, T)
             _i = C₁ * a2 * (λ ^-5)
             out1 = _i
@@ -758,6 +763,19 @@ Units: W/(m²⋅sr⋅K)
             out2 = _i2
             out3 = (a1 * (2.0 * a3 - 1.0) - 2.0) * _i2 / T
         return (out1 , out2 , out3)
+    end
+       """
+    Dₜibb( λ::Number, T::Number , skip_second_derivative::Val{true})
+
+Skips the second derivative evaluation `` Dₜibb( λ, T , Val(true))``
+"""
+function Dₜibb( λ::Number, T::Number , skip_second_derivative::Val{true})
+            a1, a2, a3 = a₁₂₃(λ, T)
+            _i = C₁ * a2 * (λ ^-5)
+            out1 = _i
+            _i2 = a1 * a3 * _i / T
+            out2 = _i2
+        return (out1 , out2 , nothing)
     end
         """
         Dₜibb!(input_tuple, λ::AbstractVector,T)
@@ -914,7 +932,12 @@ function ∇²ₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
                 power(T) * ∇²ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
     end
 
-    function Dₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+    """
+    Dₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+
+returns all derivatives 
+"""
+function Dₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
 
         P = power(T)
         Pt = ∇ₜpower(T)
@@ -929,6 +952,24 @@ function ∇²ₜband_power(T ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
         bptt = Ptt * I + 2.0 * Pt * It + P * Itt
 
         return (bp , bpt , bptt)
+    end    
+    """
+    Dₜband_power(T , skip_second_derivative::Val{true} ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+
+returns the value and its derivative
+"""
+function Dₜband_power(T , skip_second_derivative::Val{true} ; λₗ=0.0 , λᵣ=Inf , tol=1e-8)
+
+        P = power(T)
+        Pt = ∇ₜpower(T)
+
+        I = ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ , tol=tol) # this is the most time consuming
+        It = ∇ₜ∫ibbₗ(T ; λₗ=λₗ , λᵣ=λᵣ )
+
+        bp  = P * I
+        bpt = Pt * I + P * It
+
+        return (bp , bpt , nothing)
     end    
 
   """
@@ -1135,7 +1176,7 @@ returns units string of output quantity  return
     @inline fourth_order_polynomial_eval(a1, a2, a3, a4, a5, x) = @evalpoly(x, a1, a2, a3, a4, a5)
 
         """
-    spectral_ratio(λ1::Number, λ2::Number, T::Number; ; e_slope::Number=1.0)
+    spectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
 
 Calculate the theoretical intensity ratio `R = e_slope * ( Ibb1/Ibb2)`
 between two wavelengths `λ1` and `λ2` at temperature `T`, accounting for the spectral 
@@ -1197,8 +1238,8 @@ end
 `e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
 """
 function ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
-    (i1, di1 , _) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
-    (i2, di2 , _) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+    (i1, di1 , _) = Dₜband_power(T ; λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
+    (i2, di2 , _) = Dₜband_power(T ; λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
     return e_slope * (di1 * i2 - di2 * i1 )/i2^2
 end
 """
@@ -1261,7 +1302,18 @@ function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number
                 e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
                 e_slope * _spectral_ratio_second_derivative(i1, di1, d2i1,
                                                             i2, di2, d2i2)
-        )
+            )
+end
+function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number , skip_second_derivative::Val{true}; e_slope::Number=1.0)
+
+    (i1, di1 , _) = Dₜibb(λ1 , T , skip_second_derivative)
+    (i2, di2 , _) = Dₜibb(λ2 , T , skip_second_derivative)
+
+    return (    
+                e_slope * i1/i2 ,
+                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+               nothing
+            )
 end
 """
     Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
@@ -1277,8 +1329,8 @@ All spectral band ratio derivatives are in one tuple
 """
 function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
 
-    (i1, di1 , d2i1) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
-    (i2, di2 , d2i2) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+    (i1, di1 , d2i1) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] ; tol = tol)
+    (i2, di2 , d2i2) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] ; tol = tol)
 
     return (    
                 e_slope * i1/i2 ,
@@ -1287,7 +1339,22 @@ function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Numbe
                                                             i2, di2, d2i2)
         )
 end
+"""
+    Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
 
+Ignores the second derivative evaluation 
+"""
+function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+
+    (i1, di1 , _) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , skip_second_derivative; tol = tol)
+    (i2, di2 , _) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , skip_second_derivative; tol = tol)
+
+    return (    
+                e_slope * i1/i2 ,
+                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+                nothing
+        )
+end
 @inline function _spectral_ratio_second_derivative(
                 I1::Number, dI1_dT::Number, d2I1_dT2::Number,
                 I2::Number, dI2_dT::Number, d2I2_dT2::Number

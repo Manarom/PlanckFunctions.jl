@@ -11,18 +11,20 @@ PlanckFunctions.jl is a high-performance Julia package designed to calculate bla
 * **Analytical Derivatives**: Compute exact first and second derivatives with respect to wavelength and temperature.
 * **Fast Band Integration**: Perform rapid, customized integration over specified wavelength regions.
 * **Averaged Coefficients**: Calculate Rosseland- and Planck-averaged attenuation coefficients.
-* **Ecosystem Ready**: Full out-of-the-box integration with `ChainRulesCore.jl` (Automatic Differentiation) and `ModelingToolkit.jl`.
+* **Ecosystem Ready**: Integration with `ChainRulesCore.jl` (Automatic Differentiation) 
 
 ## Advanced Infrastructure Capabilities
 
 ### 1. Automatic Differentiation (AD) Compatibility
-The package defines custom `frule` and `rrule` expressions. It hooks directly into AD engines like `Zygote.jl`, `Enzyme.jl`, and `ForwardDiff.jl`, making them completely allocation-free and robust against array mutation errors:
+The package defines custom `frule` and `rrule` expressions for main functions 
 
 ```julia
 using Zygote, PlanckFunctions
 
-# Zygote automatically intercepts our custom analytical pullback for maximum performance
-grad = Zygote.gradient(T -> ibb(1.5, T), 1500.0)
+Zygote.gradient(ibb, 2.0 , 1500.0)
+Zygote.gradient(t->band_power(t , ; λₗ = 1.2 , λᵣ =4.0), 1500.0) 
+∇ₜband_power(1500.0 , ; λₗ = 1.2 , λᵣ =4.0) # the same analytically
+
 ```
 
 ### 2. Physical Uncertainty Propagation
@@ -31,8 +33,8 @@ Because the core math is built using abstract type constraints, you can seamless
 ```julia
 using Measurements, PlanckFunctions
 
-T = 1500.0 ± 2.5 # Temperature with error bounds
-intensity = ibb(1.5, T) # Automatically returns an intensity value with precise error bounds
+ibb(1.5, 1500.0 ± 2.5) # Automatically returns an intensity value with precise error bounds
+spectral_band_ratio((1.0,2.0) , (2.0,3.0) , 1374.5 ± 0.5 )
 ```
 
 ## Documentation

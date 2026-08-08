@@ -25,7 +25,7 @@ using PlutoUI, Plots,
 	OptimizationOptimJL,BenchmarkTools, 
 	LinearAlgebra, Interpolations,Printf,
 	MKL,LinearAlgebra,
-	Polynomials, ForwardDiff, LaTeXStrings, PrettyTables
+	Polynomials, ForwardDiff, LaTeXStrings, PrettyTables , ChainRulesCore
 
 # ╔═╡ 500f0cb0-bf70-11ee-19a8-35930e422cab
 md"""
@@ -507,6 +507,7 @@ pretty_table(HTML,hcat(ros_attenuation_fun(selectedT),pl_attenuation_fun(selecte
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
@@ -523,6 +524,7 @@ Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 
 [compat]
 BenchmarkTools = "~1.6.0"
+ChainRulesCore = "~1.26.1"
 ForwardDiff = "~0.10.38"
 Interpolations = "~0.15.1"
 LaTeXStrings = "~1.4.0"
@@ -542,7 +544,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "cacf4da8dabe400f334475792795cb31b6deb3db"
+project_hash = "14ed00dd7027d00332578e2f420a103103df3a35"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -686,9 +688,9 @@ version = "1.18.4+0"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra"]
-git-tree-sha1 = "1713c74e00545bfe14605d2a2be1712de8fbcb58"
+git-tree-sha1 = "12177ad6b3cad7fd50c8b3825ce24a99ad61c18f"
 uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-version = "1.25.1"
+version = "1.26.1"
 weakdeps = ["SparseArrays"]
 
     [deps.ChainRulesCore.extensions]
@@ -2448,9 +2450,9 @@ version = "1.8.1+0"
 # ╟─500f0cb0-bf70-11ee-19a8-35930e422cab
 # ╟─40e2112d-58cc-4650-8c6b-53b23a9fe470
 # ╟─fc6d97d3-3775-42d2-a991-09d875b0dd38
-# ╟─c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
-# ╟─5033a26d-2ca9-4b41-bf3e-3e3439ce819e
-# ╟─77e9ee5b-b7f5-4216-8745-ca0286ab9024
+# ╠═c6f4b5c0-e007-4d4f-8b79-b3380cc5e10c
+# ╠═5033a26d-2ca9-4b41-bf3e-3e3439ce819e
+# ╠═77e9ee5b-b7f5-4216-8745-ca0286ab9024
 # ╟─27ca1398-96ab-4d24-9c6d-63e02da49a94
 # ╟─9e047346-b39e-4179-8f8a-bb1188941606
 # ╟─7098ee9a-1dc9-43fb-b554-35d87174fc64
@@ -2465,7 +2467,7 @@ version = "1.8.1+0"
 # ╟─3a16c8c8-17d9-4c36-9bc1-99a081a32c33
 # ╟─05c7a161-4346-4464-b41f-66ca7b3e149d
 # ╟─cf20dc50-152a-440e-9dae-12e9686576ba
-# ╠═ae5738ce-9c29-42f3-8b9c-a465c8bf2952
+# ╟─ae5738ce-9c29-42f3-8b9c-a465c8bf2952
 # ╟─9bc6c540-53c8-4a4d-9194-629d9e0277ca
 # ╟─fad07c97-14ee-4df8-9914-72309fa55d24
 # ╟─439c48f9-69e7-46bc-8c42-f53ad5456772
@@ -2492,7 +2494,7 @@ version = "1.8.1+0"
 # ╟─7b32578c-de60-47fa-ae3f-628bb1c887ba
 # ╟─95d1107f-07c5-4c31-904a-1471cb51ad33
 # ╟─631a1822-5bf0-4713-b048-a17b93bfa66e
-# ╟─ae12d403-1149-426e-ab13-5afc5e5615d9
+# ╠═ae12d403-1149-426e-ab13-5afc5e5615d9
 # ╟─c2071134-3355-4479-a2d7-55d2141bb7ff
 # ╟─70f59af9-f609-4b9b-b23e-606bc3b2efa2
 # ╟─51988df7-5be5-478f-8cda-b4999b32ff6f
@@ -2507,7 +2509,7 @@ version = "1.8.1+0"
 # ╟─6f7497ac-d157-4ed5-8ed8-2a80f267efad
 # ╟─21d63be3-b945-452b-91d8-63efb3568b95
 # ╟─95c03041-35f2-4426-abfd-5aebf85078a4
-# ╠═bcc6fb2b-491c-4c1b-9e33-1433c93f61c1
+# ╟─bcc6fb2b-491c-4c1b-9e33-1433c93f61c1
 # ╟─8477c4f8-7ab3-4763-a204-487e5f2f47c8
 # ╟─22ba3ba5-b82e-459f-b32d-8df4edc63965
 # ╟─4eece7fd-21ee-41a5-846f-2a9ec615d979

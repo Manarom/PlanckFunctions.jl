@@ -43,9 +43,9 @@ module PlanckFunctions
     Wavelength units are microns and all temperatures should be in Kelvins. 
     
     Main functions are:
-     [`ibb`](@ref)  - spectral intensity (spectral radiance) in [W/m²⋅sr⋅μm]
+    [`ibb`](@ref)  - spectral intensity (spectral radiance) in [W/m²⋅sr⋅μm]
 
-     [`∇ₜibb`](@ref)  - spectral intensity first derivative with respect to temperature
+    [`∇ₜibb`](@ref)  - spectral intensity first derivative with respect to temperature
 
     [`∇²ₜibb`](@ref)  - spectral intensity second derivative with respect to temperature
 
@@ -53,6 +53,14 @@ module PlanckFunctions
 
     [`∇²ₗibb`](@ref)  - spectral intensity second derivative with respect to wavelength
 
+    [`band_power`](@ref) , [`∇ₜband_power`](@ref) , [`∇²ₜband_power`](@ref)  - total intensity (spectral radiance) in wavelength region together with its derivatives, [W/m²⋅sr]
+
+    [`spectral_ratio`](@ref) , [`∇ₜspectral_ratio`](@ref) , [`∇²ₜspectral_ratio`](@ref)   - spectral intensity ratio for two wavelength (spectral ration pyrometer)
+
+    [`spectral_band_ratio`](@ref) , [`∇ₜspectral_band_ratio`](@ref) , [`∇²ₜspectral_band_ratio`](@ref)   - spectral intensity ratio for two wavelength wavelength bands
+    
+    [`planck_averaged`](@ref) - plack - averaged quantity (e.g. total emittance)
+    
     [`rosseland_averaged_attenuation`](@ref) - Rosseland-averaging of spectral attenuation
 
     [`planck_averaged_attenuation`](@ref) - Planck-averaging of spectral attenuation

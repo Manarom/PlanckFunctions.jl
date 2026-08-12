@@ -33,6 +33,7 @@ module PlanckFunctions
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
+    const citation3 = "https://physics.nist.gov/"
     """
     `PlanckFunctions` module provides a set of functions for evaluating 
     the Planck thermal emission spectrum intensity (spectral radiance) and 
@@ -72,40 +73,80 @@ module PlanckFunctions
     $(citation)
     
     $(citation2)
+
+    $(citation3)
     """
     PlanckFunctions
-    
-    const ħ = 1.054_571_817E-34::Float64 # J*s
+    # FUNDAMENTAL CONSTANTS 
+    """
+        Planck const
+        `h` [$(citation3)] , J Hz^-1
+    """
+    const h_big  = BigFloat("6.62607015e-34") 
+        """
+        Speed of light in vacuum
+        `c` [$(citation3)] , m s^-1
+    """
+    const c_big  = BigFloat("299792458.0")
+        """
+        Boltzmann const 
+        `kb` [$(citation3)] , J K^-1    
+    """    
+    const kB_big = BigFloat("1.380649e-23")    
+    const C₁_big   =    2 * h_big * c_big^2 * BigFloat("1e24")
+    const C₂_big = (h_big * c_big / kB_big) * BigFloat("1e6")
+    const σ_big  = (2 * big(pi)^5 * kB_big^4) / (15 * h_big^3 * c_big^2)
+
+    const ħ = Float64(h_big / (2pi)) # J*s
     #const C₁   = 1.191043E8::Float64#(1.191043E8,"W*μm*/m²*sr"," ","Risch","2016"),
     
     """
         C₁ constant for Planck function multiplier in [W⋅μm⁴/(m²⋅sr)]
-        source $(citation) see Appendix A.
-        Multiplied by 2 with respect to the source.
+        source $(citation3) 
     """
-    const C₁   = 2*0.595522001e8 # TRHT
+    const C₁   = Float64(C₁_big)
+    #const C₁   = 2*0.595522001e8 # TRHT v. 1.1.1
     #const C₂ = 14387.752::Float64#(14387.752,"μm**K"," ","Risch","2016"),
     """
         C₂ constant for Planck spectral intensity exponent in [μm⋅K]
-        source $(citation) see Appendix A.
+        source $(citation3)
     """
-    const C₂ = 14387.7688::Float64# TRHT
+    const C₂ = Float64(C₂_big)
+    #const C₂ = 14387.7688::Float64# TRHT v. 1.1.1
+
+    const x_wien_big = let
+        x = big"4.965" # initial
+        for _ in 1:6   # 
+            ex = exp(-x)
+            f  = 5 * (one(x) - ex) - x
+            df = 5 * ex - one(x)
+            x -= f / df
+        end
+        x
+    end
+    const C₃_big = C₂_big / x_wien_big
+    const C₄_big = C₁_big / (C₃_big^5 * (exp(x_wien_big) - one(x_wien_big)))
+
+
     """
     C₃ constant of Wien's displacement law [μm⋅K]
-    source $(citation) see Appendix A.
-"""    
-    const C₃ = 2897.77::Float64#(2897.77,"μm*K"," ","Risch","2016"),
+    source $(citation3)
+""" 
+    const C₃ = Float64(C₃_big)
+    #const C₃ = 2897.77::Float64#(2897.77,"μm*K"," ","Risch","2016"),
     """
     C₄ constant in equation for maximum blackbody intensity [W/(m²⋅μm⋅sr*K⁵)]
-    source $(citation) see Appendix A.
-"""    
-    const C₄ = 4.09567E-12::Float64 #TRHT
+    source $(citation3)
+"""   
+    const C₄ = Float64(C₄_big)
+    #const C₄ = 4.09567E-12::Float64 #TRHT v. 1.1.1
     #const C₄ = 4.09567E-12::Float64#(4.09567E-12,"W/m^2*μm*sr*K^5"," ", "Risch","2016"),
     """
     Stefan-Boltzmann constant [W/(m²*K⁴)]
-    source $(citation) see Appendix A.
+    source $(citation3) 
 """
-    const σ  = 5.670367E-8::Float64
+    const σ = Float64(σ_big)    
+    #const σ  = 5.670367E-8::Float64 v. 1.1.1
     #const σ  = 5.670400E-8::Float64 #(5.670400E-8,"W/(m²*K⁴)"," ", "Risch","2016"), previous constants values 
     const Tₖ = 273.15::Float64 #(273.15,"K"," ", "Risch","2016");
 """
@@ -600,6 +641,14 @@ The wavelength (in μm) of bb intensity maximum vs temperature `T`
     function λₘ(T)
         # maximum wavelength of BB intencity in μm at temperature T (in Kelvins)
         C₃./T
+    end
+    """
+    ibb_max(T)
+
+Blackbody instensity at maximum value 
+"""
+function ibb_max(T)
+       return  @. C₄ * T^5
     end
     """
     tₘ(λ)

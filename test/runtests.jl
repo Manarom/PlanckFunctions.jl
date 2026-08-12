@@ -149,7 +149,7 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
                     
                     den_integral, _ = quadgk(l -> PF.ibb(l, T), λ[begin], λ[end], rtol=1e-14)
                     den_int_sum = PF.band_power(T , λₗ = λ[begin] , λᵣ=λ[end] , tol =1e-14)
-                    @test den_integral ≈ den_int_sum rtol = 1e-4
+                    @test den_integral ≈ den_int_sum rtol = 1e-8
 
                     expected = num_integral / den_integral
                                         

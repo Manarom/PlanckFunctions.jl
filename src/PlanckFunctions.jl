@@ -98,6 +98,43 @@ module PlanckFunctions
     const C₂_big = (h_big * c_big / kB_big) * BigFloat("1e6")
     const σ_big  = (2 * big(pi)^5 * kB_big^4) / (15 * h_big^3 * c_big^2)
 
+    # Root for base Planck function maximum (ibb): 5 * (1 - exp(-x)) - x = 0
+    const x_wien = let
+        x = big"4.965114231744276"
+        for _ in 1:6
+            ex = exp(-x)
+            f  = 5 * (one(x) - ex) - x
+            df = 5 * ex - one(x)
+            x -= f / df
+        end
+        x
+    end
+
+    # Root for 1st temperature derivative peak (∇ₜibb)
+    # Equation: 6 * (1 - exp(-x)) - x * (1 + exp(-x)) = 0
+    const x_nav1 = let
+        x = big"5.421435332832289" # Correct initial guess
+        for _ in 1:6
+            ex = exp(-x)
+            f  = 6 * (one(x) - ex) - x * (one(x) + ex)
+            df = 5 * ex - one(x) - x * ex # Analytic first derivative
+            x -= f / df
+        end
+        x
+    end
+    const x_nav2 = C₂_big /(1000.0 * big"1.957329357329357329357329357329357329357329357329357329357329357329357329357332")
+
+    const C₃_big = C₂_big / x_wien
+    const C₄_big = C₁_big / (C₃_big^5 * (exp(x_wien) - one(x_wien)))
+
+    # for (∇ₜibb)
+    const C₃_∇₁_big = C₂_big / x_nav1
+    const C₄_∇₁_big = (C₁_big * x_nav1 *  exp(x_nav1)) / (C₃_∇₁_big^5 * ( exp(x_nav1) - 1)^2)
+
+    # for (∇²ₜibb)
+    const C₃_∇₂_big = C₂_big / x_nav2
+    const C₄_∇₂_big = big"1.050264096505020973289772466278833634341988089223353286134188913252405393160527e-10"
+
     const ħ = Float64(h_big / (2pi)) # J*s
     #const C₁   = 1.191043E8::Float64#(1.191043E8,"W*μm*/m²*sr"," ","Risch","2016"),
     
@@ -115,20 +152,6 @@ module PlanckFunctions
     const C₂ = Float64(C₂_big)
     #const C₂ = 14387.7688::Float64# TRHT v. 1.1.1
 
-    const x_wien_big = let
-        x = big"4.965" # initial
-        for _ in 1:6   # 
-            ex = exp(-x)
-            f  = 5 * (one(x) - ex) - x
-            df = 5 * ex - one(x)
-            x -= f / df
-        end
-        x
-    end
-    const C₃_big = C₂_big / x_wien_big
-    const C₄_big = C₁_big / (C₃_big^5 * (exp(x_wien_big) - one(x_wien_big)))
-
-
     """
     C₃ constant of Wien's displacement law [μm⋅K]
     source $(citation3)
@@ -136,10 +159,20 @@ module PlanckFunctions
     const C₃ = Float64(C₃_big)
     #const C₃ = 2897.77::Float64#(2897.77,"μm*K"," ","Risch","2016"),
     """
-    C₄ constant in equation for maximum blackbody intensity [W/(m²⋅μm⋅sr*K⁵)]
-    source $(citation3)
-"""   
+     Constant of the first derivaitve Wien's displacement 
+    """
+    const C₃_∇₁ = Float64(C₃_∇₁_big)
+        """
+     Constant of the second derivaitve Wien's displacement 
+    """
+    const C₃_∇₂ = Float64(C₃_∇₂_big)
+    """
+        C₄ constant in equation for maximum blackbody intensity [W/(m²⋅μm⋅sr*K⁵)]
+        source $(citation3)
+    """   
     const C₄ = Float64(C₄_big)
+    const C₄_∇₁ = Float64(C₄_∇₁_big)
+    const C₄_∇₂ = Float64(C₄_∇₂_big)
     #const C₄ = 4.09567E-12::Float64 #TRHT v. 1.1.1
     #const C₄ = 4.09567E-12::Float64#(4.09567E-12,"W/m^2*μm*sr*K^5"," ", "Risch","2016"),
     """
@@ -586,7 +619,7 @@ function weighted_average(α::AbstractVector,
 
         return s/sn
 end
-
+const Dfunctions = Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)}
 """
     weighted_value(     α::AbstractVector, 
                         λ::AbstractVector,
@@ -600,8 +633,8 @@ Returns the tuple of  `(f(α)g(λ,T)dλ , ∫g(λ,T)dλ)`
 function weighted_value(α::AbstractVector, 
                         λ::AbstractVector,
                         T::D, 
-                        g::G,
-                        f::F = identity) where {F , G , D <: Number}
+                        g::Dfunctions,
+                        f::F = identity) where {F   , D <: Number}
 
     N = length(α)
     @assert length(λ) == N
@@ -609,7 +642,8 @@ function weighted_value(α::AbstractVector,
     s = zero(D)
     sn = zero(D)
 
-    norm_val = maximum(l -> ibb(l, T), λ)
+    (lmin , lmax) = extrema(λ)
+    (_ , norm_val) = maximum_on_interval(g , lmin , lmax , T)    
     nrm = inv(norm_val)
 
     g_start = g(λ[begin], T) * nrm
@@ -649,8 +683,20 @@ function weighted_value(α::AbstractVector,
     
     return (s * norm_val , sn * norm_val)
 end
-
-
+function maximum_on_interval(g::Dfunctions , lmin , lmax , T)
+    λmax = λₘ(g , T) # selected function maximum value   
+    
+    Lmax = if λmax <= lmax
+                if λmax >= lmin
+                    λmax
+                else # λmax < lmin
+                    lmin    
+                end
+            else
+                lmax
+            end
+    return (Lmax , g(Lmax , T))
+end
     """
     λₘ(T)
 
@@ -661,18 +707,39 @@ The wavelength (in μm) of bb intensity maximum vs temperature `T`
 
 `T` - temperature in Kelvins
 """
-    function λₘ(T)
-        # maximum wavelength of BB intencity in μm at temperature T (in Kelvins)
-        C₃./T
-    end
+λₘ(T) = C₃./T
+"""
+    λₘ(::Union{typeof{ibb} , typeof(∇ₜibb) , typeof(∇ₜ²ibb)} , T)
+
+The wavelength (in μm) of bb intensity  , its first or second derivaitve maximum vs temperature `T` 
+
+# Arguments:
+
+`T` - temperature in Kelvins
+"""
+function λₘ(::Union{typeof(ibb) , typeof(∇ₜibb) , typeof(∇²ₜibb)} , T)  end
+
+λₘ(::typeof(ibb) , T) = C₃./T
+λₘ(::typeof(∇ₜibb) , T) = C₃_∇₁./T
+λₘ(::typeof(∇²ₜibb) , T) = C₃_∇₂./T
+
     """
-    ibb_max(T)
+    bb_max(T)
 
 Blackbody instensity at maximum value 
 """
-function ibb_max(T)
-       return  @. C₄ * T^5
-    end
+bb_max(T) = @. C₄ * T^5
+"""
+    bb_max(bb_function , T)
+
+Returns the value of function at a maximum 
+`bb_function` can be `ibb` ,   `∇ₜibb` ,  `∇²ₜibb`
+
+"""
+bb_max(::typeof(ibb) , T) = @. C₄ * T^5
+bb_max(::typeof(∇ₜibb), T) = @. C₄_∇₁ * T^4
+bb_max(::typeof(∇²ₜibb) , T) = @. C₄_∇₂ * T^3
+
     """
     tₘ(λ)
 

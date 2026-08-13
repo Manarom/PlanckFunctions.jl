@@ -29,7 +29,8 @@ module PlanckFunctions
             planck_averaged,
             planck_averaged_attenuation,
             rosseland_averaged_attenuation,
-            weighted_average
+            weighted_average,
+            weighted_value
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
@@ -535,7 +536,7 @@ spectral scattering and absorption coefficients) `α(λ)` for temperature `T`:
 
 `αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ/∫∇ₜibb(λ,T)dλ)⁻¹`  
 """
-rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,∇ₜibb,inv))
+rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α , λ , T , ∇ₜibb , inv))
 
 """
     planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
@@ -545,7 +546,7 @@ spectral scattering and absorption coefficients) α(λ) for temperature T:
 
 `αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ/∫ibb(λ,T)dλ)⁻¹`   
 """
-planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,ibb,inv)) #identity
+planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α , λ , T , ibb , inv)) #double inversion
 
 """
     planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number)
@@ -556,13 +557,14 @@ Evaluates the Planck-averaged value of `x(λ)` for temperature `T`:
 
 E.g. can be used to evaluate the integral  from  spectral emissivity
 """
-planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x,λ,T,ibb,identity)
+planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x , λ , T , ibb , identity)
 """
     weighted_average(α::AbstractVector, 
                         λ::AbstractVector,
-                        T , 
-                        g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
-                        f::F = identity) where F <: Function
+                        T::D, 
+                        g::G,
+                        f::F = identity) where {F, G, D <: Number}
+
 
 Generic function to evaluate the averaged value of some `f(x)` function of variable `x` dependent
 on wavelength `λ` for temperature `T`. 
@@ -576,58 +578,79 @@ the default value of f is `identity`, e.g. if f = inv:
 """
 function weighted_average(α::AbstractVector, 
                         λ::AbstractVector,
-                        T::Number , 
+                        T::D, 
+                        g::G,
+                        f::F = identity) where {F, G, D <: Number}
+
+        (s , sn) = weighted_value(α , λ ,T , g , f)
+
+        return s/sn
+end
+
+"""
+    weighted_value(     α::AbstractVector, 
+                        λ::AbstractVector,
+                        T , 
                         g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
                         f::F = identity) where F <: Function
+
+Returns the tuple of  `(f(α)g(λ,T)dλ , ∫g(λ,T)dλ)`
+
+"""
+function weighted_value(α::AbstractVector, 
+                        λ::AbstractVector,
+                        T::D, 
+                        g::G,
+                        f::F = identity) where {F , G , D <: Number}
+
     N = length(α)
-    @assert length(λ)==N
+    @assert length(λ) == N
 
-    s = 0.0
-    sn = 0.0
+    s = zero(D)
+    sn = zero(D)
 
-    norm_val = maximum(l->g(l,T) , λ) # normalizing the value of Planck function
-    nrm = 1/norm_val
+    norm_val = maximum(l -> ibb(l, T), λ)
+    nrm = inv(norm_val)
 
     g_start = g(λ[begin], T) * nrm
     
-    @inbounds for i in 1:N-1
+    inv2 = inv(D(2))
+    inv3 = inv(D(3))
+    inv4 = inv(D(4))
 
+    @inbounds for i in 1:N-1
         lstart = λ[i]
         lend = λ[i + 1]
+        
+        h = lend - lstart
+        h_half = h * inv2
 
-        lcentre = (lstart + lend )/2
+        b1 = D(f(α[i]))
+        b2 = (D(f(α[i+1])) - b1) / h
 
-        # linear fitting of α
-        b1 = f( α[i] ) 
-        b2 = (f(α[i+1]) - b1)/(lend - lstart)
-        b1 = b1 - b2 * lstart
-
-        #second order polynomial fitting of f within the interval
-        g_end = g(lend , T) * nrm #g_T(lend)
-        g_centre = g(lcentre , T) * nrm
-        (a1 , a2 , a3) = second_order_polynomial_fit(
-                                                    lstart , lcentre , lend ,
-                                                    g_start,
-                                                    g_centre,
-                                                    g_end
-                                                )
+        g_end = g(lend, T) * nrm
+        g_centre = g(lstart + h_half, T) * nrm
+        
+        (a1, a2, a3) = second_order_polynomial_fit(
+            zero(D), h_half, h,
+            g_start, g_centre, g_end
+        )
 
         g_start = g_end                                        
-        # g(l) = a1 + a2*l + a3*l²
-        # f(l) = b1 + b2*l
-        # ∫f(x)⋅g(x)dx = c2*l + c3*l² + c4*l³ + c5*l⁴
-        c2=a1*b1
-        c3=(a1*b2 + a2*b1)/2
-        c4 = (a2*b2 + a3*b1)/3
-        c5=a3*b2/4
-        #evaluating the integrand values
-        s += fourth_order_polynomial_eval(0.0 , c2 , c3 , c4 , c5 , lend) -
-                            fourth_order_polynomial_eval(0.0 , c2 , c3 , c4 , c5 , lstart)
-        sn += fourth_order_polynomial_eval(0.0 , a1 , a2/2 , a3/3 , 0.0 , lend) -
-                         fourth_order_polynomial_eval(0.0 , a1 , a2/2 , a3/3 , 0.0 , lstart)
+
+        c2 = a1 * b1
+        c3 = (a1 * b2 + a2 * b1) * inv2
+        c4 = (a2 * b2 + a3 * b1) * inv3
+        c5 = a3 * b2 * inv4
+
+        s  += @evalpoly(h, zero(D), c2, c3, c4, c5)
+        sn += @evalpoly(h, zero(D), a1, a2 * inv2, a3 * inv3)
     end 
-    return s/sn
+    
+    return (s * norm_val , sn * norm_val)
 end
+
+
     """
     λₘ(T)
 

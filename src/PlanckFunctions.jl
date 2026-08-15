@@ -1,32 +1,23 @@
 # PlanckFunctions and its derivatives all tempeatures should be in Kelvins, all wavelengths in μm
 module PlanckFunctions
     using ChainRulesCore
-    export  Dₜibb!,
-            Dₜibb,
-            ∫ibbₗ,
-            Tₖ, 
-            ibb,
-            ibb!,
-            ∇ₜibb,
-            ∇ₜibb!, 
-            ∇²ₜibb,
-            ∇²ₜibb!,
-            ∇²ₗibb,
-            power,
-            band_power,
-            ∇ₜpower,
-            ∇ₜband_power,
-            ∇²ₜband_power,
-            Dₜband_power,
-            spectral_ratio,
-            ∇ₜspectral_ratio,
-            ∇²ₜspectral_ratio, 
-            Dₜspectral_ratio,
-            spectral_band_ratio,
-            ∇ₜspectral_band_ratio,
-            ∇²ₜspectral_band_ratio, 
-            Dₜspectral_band_ratio,          
-            planck_averaged,
+    export   ∫ibbₗ, Tₖ, 
+
+            ibb , ∇ₜibb, ∇²ₜibb, Dₜibb, # temperature derivatives 
+
+            ibb!, ∇ₜibb!, ∇²ₜibb!, Dₜibb!, # in-place versions 
+            
+            ∇ₗibb ,  ∇²ₗibb, # wavelength derivatives 
+
+            power , ∇ₜpower ,  ∇²ₜpower , Dₜpower ,  # total intensity and derivatives 
+
+            band_power ,  ∇ₜband_power, ∇²ₜband_power, Dₜband_power, # band integrated Planck function and derivatives 
+            
+            spectral_ratio, ∇ₜspectral_ratio, ∇²ₜspectral_ratio, Dₜspectral_ratio, # two wavelengths intensities ratio
+            
+            spectral_band_ratio , ∇ₜspectral_band_ratio, ∇²ₜspectral_band_ratio, Dₜspectral_band_ratio, # two band integral intensities ratio
+                  
+            planck_averaged, 
             planck_averaged_attenuation,
             rosseland_averaged_attenuation,
             weighted_average,
@@ -67,6 +58,7 @@ module PlanckFunctions
 
     [`planck_averaged_attenuation`](@ref) - Planck-averaging of spectral attenuation
 
+    [`weighted_average`](@ref) - general function to evaluate averaged 
 
 
     Main literature sources are:
@@ -177,7 +169,7 @@ module PlanckFunctions
     #const C₄ = 4.09567E-12::Float64#(4.09567E-12,"W/m^2*μm*sr*K^5"," ", "Risch","2016"),
     """
     Stefan-Boltzmann constant [W/(m²*K⁴)]
-    source $(citation3) 
+source $(citation3) 
 """
     const σ = Float64(σ_big)    
     #const σ  = 5.670367E-8::Float64 v. 1.1.1
@@ -196,20 +188,20 @@ Returns tuple:
 
 (`a1 = C₂/(λ*T)`, `a2 = 1/expm1(a1)`, `a3 = 1 + a2`)
 """
-function  a₁₂₃(λ::L , T::F) where {F <: Number , L <: Number}
+function  a₁₂₃(λ::L , T::F) where {F , L }
     D = promote_type(F , L)
     one_D = one(D)
-    #=if T <= zero(D)
-        return (inv(zero(D)), zero(D), one_D)  # T-> 0   :  a1->inf, a2 -> 0 , a3 -> 1 
-    end=#
     a1 = D(C₂/(λ*T))
     a2 = one_D/expm1(a1) # 1/eaxpm1(a)
     a3 = one_D + a2  # exp(a)/expm1(a) = 1 + 1/expm 
     return  (a1 , a2 , a3)
 end
-    # need branching here 
+    # need branching here ?
     #       T-> 0   :  a1->inf, a2 -> 0 , a3 -> 1 
     #       T -> inf  : a1 -> 0 , a2 -> 1 , a3 -> 1  
+    #=if T <= zero(D)
+        return (inv(zero(D)), zero(D), one_D)  # T-> 0   :  a1->inf, a2 -> 0 , a3 -> 1 
+    end=#
 """
     a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Number)
 
@@ -251,9 +243,9 @@ end
 """
     ibb(λ,T)
 
-    Blackbody spectral intensity (spectral radiance), [W/m²⋅sr⋅μm]
-   ` Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` ,
-   `a₁=C₂/(λ*T)`
+Blackbody spectral intensity (spectral radiance), [W/m²⋅sr⋅μm]
+` Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` ,
+`a₁=C₂/(λ*T)`
 
 # Arguments:
 
@@ -277,10 +269,10 @@ Blackbody spectral intensity (spectral radiance)  with intermediate matrix provi
 `amat` - matrix of intermediate coefficients,  [Nx3]
 `λ` - wavelength in μm,  [Nx0]
 """
-    function ibb(λ::AbstractVector , amat::AbstractMatrix) # internal version with provided coefficients matrix
-        a2 = @view amat[: , 2]
-        return @. C₁ * a2 * ((1/λ)^5)     
-    end
+function ibb(λ::AbstractVector , amat::AbstractMatrix) # internal version with provided coefficients matrix
+    a2 = @view amat[: , 2]
+    return @. C₁ * a2 * ((1/λ)^5)     
+end
         """
         ibb(λ::AbstractVector,T::AbstractVector)
 
@@ -299,8 +291,8 @@ Blackbody spectral intensity (spectral radiance),  [W/m²⋅sr⋅μm]
             """
         ibb!(i::AbstractVector , λ::AbstractVector , T::Number)
         
-        In-place blackbody intensity,  [W/m²⋅sr⋅μm]
-        `Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` , where `a₁=C₂/(λT)`
+In-place blackbody intensity,  [W/m²⋅sr⋅μm]
+`Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` , where `a₁=C₂/(λT)`
 
 # Arguments:
 
@@ -325,10 +317,10 @@ In-place blackbody intensity with intermediate coefficients provided externally,
 `λ` - wavelength in μm,  [Nx0]
 `amat` - matrix of intermediate coefficients,  [Nx3]
     """
-    function ibb!(i::AbstractVector , λ::AbstractVector , amat::AbstractMatrix) # this version is used in emissivity approximation 
-            a2 = @view amat[: , 2] # Ibb = (λ⁻⁵)* C₁*a₂
-            return @. i = C₁ * a2 *((1/λ)^5) 
-        end   
+function ibb!(i::AbstractVector , λ::AbstractVector , amat::AbstractMatrix) # this version is used in emissivity approximation 
+        a2 = @view amat[: , 2] # Ibb = (λ⁻⁵)* C₁*a₂
+        return @. i = C₁ * a2 *((1/λ)^5) 
+    end   
 
     """
             ∇ₜibb(λ,T)
@@ -890,6 +882,13 @@ Units: W/(m²⋅sr⋅K)
 `T` - temperature, K
 """
 ∇²ₜpower(T) = 12.0 * σ * (T^2) / pi
+
+"""
+    Dₜpower(T)
+
+Tuple of total intensity , fisrt and second derivative with respect to temeperature
+"""
+Dₜpower(T) = (power(T) , ∇ₜpower(T)   , ∇²ₜpower(T) )
     # dummy type to drop setindex
     struct Drop end
     @inline Base.setindex!(::Drop, _ , idx...) = nothing
@@ -930,7 +929,7 @@ function Dₜibb( λ::Number, T::Number)
        """
     Dₜibb( λ::Number, T::Number , skip_second_derivative::Val{true})
 
-Skips the second derivative evaluation `` Dₜibb( λ, T , Val(true))``
+Skips the second derivative evaluation `Dₜibb( λ, T , Val(true))`
 """
 function Dₜibb( λ::Number, T::Number , skip_second_derivative::Val{true})
             a1, a2, a3 = a₁₂₃(λ, T)
@@ -1532,7 +1531,7 @@ end
     ∇ₗ(::typeof(∇ₗibb)) = ∇²ₗibb
     ∇²ₗ(::typeof(ibb)) = ∇²ₗibb
     # generating operators 
-    for f in (:ibb, :band_power, :power, :spectral_ratio)
+    for f in (:ibb, :band_power, :power, :spectral_ratio , :spectral_band_ratio)
         f_orig  = Symbol(f)          #  :ibb
         f_deriv = Symbol("∇ₜ", f)    #  :∇ₜibb
         f_sec   = Symbol("∇²ₜ", f)   #  :∇²ₜibb
@@ -1543,8 +1542,64 @@ end
         end
     end
     ∫ₗ(::typeof(ibb)) = power
-    ∫ₗ(::typeof(ibb) , λ₁::Number, λ₂::Number) = t -> band_power(t , λₗ = λ₁ , λᵣ = λ₂)
-    ∫ₗ(g::Dfunctions , λ::AbstractVector , α::AbstractVector) = t -> first(weighted_value(α , λ , t , g , identity ))
+    ∫ₗ(::typeof(∇ₜibb)) = ∇ₜpower
+    ∫ₗ(::typeof(∇²ₜibb)) = ∇²ₜpower
+    struct BandIntegrator{F , L1 ,  L2}
+        l1::L1
+        l2::L2
+        BandIntegrator{F}(l1::L1  , l2::L2) where {F , L1 , L2} = new{F , L1 , L2}(l1 , l2)
+    end
+    struct WeightedIntegrator{F , LT , AT}
+        f::F 
+        l::LT
+        a::AT
+    end
+    (w::WeightedIntegrator)(t::Number) = first(weighted_value(w.a , w.l , t , w.f , identity ))
+    (b::BandIntegrator{typeof(ibb)})(T::Number) =   band_power(T , λₗ = b.l1 , λᵣ = b.l2)
+    (b::BandIntegrator{typeof(∇ₜibb)})(T::Number) =  ∇ₜband_power(T , λₗ = b.l1 , λᵣ = b.l2)
+    (b::BandIntegrator{typeof(∇²ₜibb)})(T::Number) =   ∇²ₜband_power(T , λₗ = b.l1 , λᵣ = b.l2)
+
+    """
+    ∫ₗ(f::F , λ₁::Number, λ₂::Number) where F <: $(Dfunctions)
+
+Returns a callable object which returns the f function integral as a function of temperature
+```julia
+f = ∫ₗ(ibb , 2.3 , 4.5)
+f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spectral range at temperature 1273,5 K
+```
+"""
+    ∫ₗ(::F, λ₁::Number, λ₂::Number) where F <: Dfunctions = BandIntegrator{F}(λ₁ , λ₂)
+    ∫ₗ(g::Dfunctions , λ::AbstractVector , α::AbstractVector) =WeightedIntegrator( g , λ , α )
+
+    """
+        ∇ₜ(f) 
+
+        Differentiation operator returns the derivatives function for the input function 
+    [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+    and their derivatives e.g [`∇ₜband_power`](@ref) etc.
+
+    # Examples
+    ```julia
+    ∇ₜ(ibb)        # -> ∇ₜibb
+    (∇ₜ∘∇ₜ)(ibb)   # ->  ∇²ₜspectral_band_ratio
+    ```
+    """
+    function ∇ₜ end
+      """
+        ∇²ₜ(f) 
+
+        Differentiation operator returns the derivatives of function
+    [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+
+    # Examples
+    ```julia
+     ∇²ₜ(ibb)          # -> ∇²ₜibb
+     ∇²ₜ(band_power)   # ->  ∇²ₜband_power
+    ```
+    """  
+    function ∇²ₜ end        
 
     include("_chain_rules.jl")
     function symbolize end

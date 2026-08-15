@@ -26,9 +26,8 @@ Zygote.gradient(t->band_power(t , ; λₗ = 1.2 , λᵣ =4.0), 1500.0)
 ∇ₜband_power(1500.0 , ; λₗ = 1.2 , λᵣ =4.0) # the same analytically
 
 ```
-
 ### 2. Physical Uncertainty Propagation
-Because the core math is built using abstract type constraints, you can seamlessly track experimental error boundaries through your thermal equations using `Measurements.jl`:
+Uncertainty propagation using  `Measurements.jl`:
 
 ```julia
 using Measurements, PlanckFunctions
@@ -36,7 +35,16 @@ using Measurements, PlanckFunctions
 ibb(1.5, 1500.0 ± 2.5) # Automatically returns an intensity value with precise error bounds
 spectral_band_ratio((1.0,2.0) , (2.0,3.0) , 1374.5 ± 0.5 )
 ```
+### 3. Symbolic representation
 
+If you load `Symbolics.jl`, `PlanckFunctions` automatically activates an extension allowing you to convert functions into symbolic expressions:
+
+```julia
+using PlanckFunctions
+using Symbolics
+
+ibb_sym = symbolize(ibb) # returns symbolic representation of Planck function 
+```
 ## Documentation
 Full documentation, including advanced examples and API details, is available at the [Documentation Hub](https://manarom.github.io/PlanckFunctions.jl/).
 

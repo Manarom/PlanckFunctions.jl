@@ -1,35 +1,27 @@
 # PlanckFunctions and its derivatives all tempeatures should be in Kelvins, all wavelengths in μm
 module PlanckFunctions
     using ChainRulesCore
-    export  Dₜibb!,
-            Dₜibb,
-            ∫ibbₗ,
-            Tₖ, 
-            ibb,
-            ibb!,
-            ∇ₜibb,
-            ∇ₜibb!, 
-            ∇²ₜibb,
-            ∇²ₜibb!,
-            ∇²ₗibb,
-            power,
-            band_power,
-            ∇ₜpower,
-            ∇ₜband_power,
-            ∇²ₜband_power,
-            Dₜband_power,
-            spectral_ratio,
-            ∇ₜspectral_ratio,
-            ∇²ₜspectral_ratio, 
-            Dₜspectral_ratio,
-            spectral_band_ratio,
-            ∇ₜspectral_band_ratio,
-            ∇²ₜspectral_band_ratio, 
-            Dₜspectral_band_ratio,          
-            planck_averaged,
+    export   ∫ibbₗ, Tₖ, 
+
+            ibb , ∇ₜibb, ∇²ₜibb, Dₜibb, # temperature derivatives 
+
+            ibb!, ∇ₜibb!, ∇²ₜibb!, Dₜibb!, # in-place versions 
+            
+            ∇ₗibb ,  ∇²ₗibb, # wavelength derivatives 
+
+            power , ∇ₜpower ,  ∇²ₜpower , Dₜpower ,  # total intensity and derivatives 
+
+            band_power ,  ∇ₜband_power, ∇²ₜband_power, Dₜband_power, # band integrated Planck function and derivatives 
+            
+            spectral_ratio, ∇ₜspectral_ratio, ∇²ₜspectral_ratio, Dₜspectral_ratio, # two wavelengths intensities ratio
+            
+            spectral_band_ratio , ∇ₜspectral_band_ratio, ∇²ₜspectral_band_ratio, Dₜspectral_band_ratio, # two band integral intensities ratio
+                  
+            planck_averaged, 
             planck_averaged_attenuation,
             rosseland_averaged_attenuation,
-            weighted_average
+            weighted_average,
+            weighted_value
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
@@ -66,6 +58,7 @@ module PlanckFunctions
 
     [`planck_averaged_attenuation`](@ref) - Planck-averaging of spectral attenuation
 
+    [`weighted_average`](@ref) - general function to evaluate averaged 
 
 
     Main literature sources are:
@@ -97,6 +90,43 @@ module PlanckFunctions
     const C₂_big = (h_big * c_big / kB_big) * BigFloat("1e6")
     const σ_big  = (2 * big(pi)^5 * kB_big^4) / (15 * h_big^3 * c_big^2)
 
+    # Root for base Planck function maximum (ibb): 5 * (1 - exp(-x)) - x = 0
+    const x_wien = let
+        x = big"4.965114231744276"
+        for _ in 1:6
+            ex = exp(-x)
+            f  = 5 * (one(x) - ex) - x
+            df = 5 * ex - one(x)
+            x -= f / df
+        end
+        x
+    end
+
+    # Root for 1st temperature derivative peak (∇ₜibb)
+    # Equation: 6 * (1 - exp(-x)) - x * (1 + exp(-x)) = 0
+    const x_nav1 = let
+        x = big"5.421435332832289" # Correct initial guess
+        for _ in 1:6
+            ex = exp(-x)
+            f  = 6 * (one(x) - ex) - x * (one(x) + ex)
+            df = 5 * ex - one(x) - x * ex # Analytic first derivative
+            x -= f / df
+        end
+        x
+    end
+    const x_nav2 = C₂_big /(1000.0 * big"1.957329357329357329357329357329357329357329357329357329357329357329357329357332")
+
+    const C₃_big = C₂_big / x_wien
+    const C₄_big = C₁_big / (C₃_big^5 * (exp(x_wien) - one(x_wien)))
+
+    # for (∇ₜibb)
+    const C₃_∇₁_big = C₂_big / x_nav1
+    const C₄_∇₁_big = (C₁_big * x_nav1 *  exp(x_nav1)) / (C₃_∇₁_big^5 * ( exp(x_nav1) - 1)^2)
+
+    # for (∇²ₜibb)
+    const C₃_∇₂_big = C₂_big / x_nav2
+    const C₄_∇₂_big = big"1.050264096505020973289772466278833634341988089223353286134188913252405393160527e-10"
+
     const ħ = Float64(h_big / (2pi)) # J*s
     #const C₁   = 1.191043E8::Float64#(1.191043E8,"W*μm*/m²*sr"," ","Risch","2016"),
     
@@ -114,20 +144,6 @@ module PlanckFunctions
     const C₂ = Float64(C₂_big)
     #const C₂ = 14387.7688::Float64# TRHT v. 1.1.1
 
-    const x_wien_big = let
-        x = big"4.965" # initial
-        for _ in 1:6   # 
-            ex = exp(-x)
-            f  = 5 * (one(x) - ex) - x
-            df = 5 * ex - one(x)
-            x -= f / df
-        end
-        x
-    end
-    const C₃_big = C₂_big / x_wien_big
-    const C₄_big = C₁_big / (C₃_big^5 * (exp(x_wien_big) - one(x_wien_big)))
-
-
     """
     C₃ constant of Wien's displacement law [μm⋅K]
     source $(citation3)
@@ -135,15 +151,25 @@ module PlanckFunctions
     const C₃ = Float64(C₃_big)
     #const C₃ = 2897.77::Float64#(2897.77,"μm*K"," ","Risch","2016"),
     """
-    C₄ constant in equation for maximum blackbody intensity [W/(m²⋅μm⋅sr*K⁵)]
-    source $(citation3)
-"""   
+     Constant of the first derivaitve Wien's displacement 
+    """
+    const C₃_∇₁ = Float64(C₃_∇₁_big)
+        """
+     Constant of the second derivaitve Wien's displacement 
+    """
+    const C₃_∇₂ = Float64(C₃_∇₂_big)
+    """
+        C₄ constant in equation for maximum blackbody intensity [W/(m²⋅μm⋅sr*K⁵)]
+        source $(citation3)
+    """   
     const C₄ = Float64(C₄_big)
+    const C₄_∇₁ = Float64(C₄_∇₁_big)
+    const C₄_∇₂ = Float64(C₄_∇₂_big)
     #const C₄ = 4.09567E-12::Float64 #TRHT v. 1.1.1
     #const C₄ = 4.09567E-12::Float64#(4.09567E-12,"W/m^2*μm*sr*K^5"," ", "Risch","2016"),
     """
     Stefan-Boltzmann constant [W/(m²*K⁴)]
-    source $(citation3) 
+source $(citation3) 
 """
     const σ = Float64(σ_big)    
     #const σ  = 5.670367E-8::Float64 v. 1.1.1
@@ -160,14 +186,22 @@ module PlanckFunctions
 
 Returns tuple:
 
-(`a1 = C₂/(λ*T)`, `a2 = 1/expm1(a1)`, `a3 = exp(a1)*a2`)
+(`a1 = C₂/(λ*T)`, `a2 = 1/expm1(a1)`, `a3 = 1 + a2`)
 """
-function  a₁₂₃(λ::Number , T::F) where F <: Number
-    a1 = C₂/(λ*T)
-    a2 = 1.0/expm1(a1) # 1/eaxpm1(a)
-    a3 = exp(a1)*a2  # exp(a)/expm1(a)
-    return isnan(a3) ? (a1 , a2 , one(F)) : (a1 , a2 , a3)
+function  a₁₂₃(λ::L , T::F) where {F , L }
+    D = promote_type(F , L)
+    one_D = one(D)
+    a1 = D(C₂/(λ*T))
+    a2 = one_D/expm1(a1) # 1/eaxpm1(a)
+    a3 = one_D + a2  # exp(a)/expm1(a) = 1 + 1/expm 
+    return  (a1 , a2 , a3)
 end
+    # need branching here ?
+    #       T-> 0   :  a1->inf, a2 -> 0 , a3 -> 1 
+    #       T -> inf  : a1 -> 0 , a2 -> 1 , a3 -> 1  
+    #=if T <= zero(D)
+        return (inv(zero(D)), zero(D), one_D)  # T-> 0   :  a1->inf, a2 -> 0 , a3 -> 1 
+    end=#
 """
     a₁₂₃!(amat::AbstractMatrix,λ::AbstractVector,T::Number)
 
@@ -183,23 +217,35 @@ In-place filling of the intermediate matrix
 `T` - temperature,  K,
 
 """
-function a₁₂₃!(amat::AbstractMatrix , λ::AbstractVector , T::Number)
+function a₁₂₃!(amat::AbstractMatrix{D} , λ::AbstractVector , T::Number) where D
+    if T <= zero(T)
+        @views amat[:, 1] .= inv(zero(D))
+        @views amat[:, 2] .= zero(D)
+        @views amat[:, 3] .= one(D)
+        return amat
+    end
     # TRY VIEW WITH broadcating
-        a1 , a2 , a3   = @views eachcol(amat)
-        @. a1 = (C₂/T)/λ
-        @. a3 =exp(a1)
-        @. a2 = 1.0 /(-1.0 + a3)
-        #a2 .= 1 ./expm1.(a1)
-        @. a3 = a3 * a2
+    a1 = @view amat[: , 1]
+    a2 = @view amat[: , 2] 
+    a3 = @view amat[: , 3]
+
+    inv_T = inv(T)
+    c2_over_T = C₂ * inv_T
+
+    @. begin
+        a1 = c2_over_T / λ
+        a2 = one(D) / expm1(a1)
+        a3 = one(D) + a2
+    end
     return amat
 end
 # BLACKBODY INTENSITY
 """
     ibb(λ,T)
 
-    Blackbody spectral intensity (spectral radiance), [W/m²⋅sr⋅μm]
-   ` Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` ,
-   `a₁=C₂/(λ*T)`
+Blackbody spectral intensity (spectral radiance), [W/m²⋅sr⋅μm]
+` Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` ,
+`a₁=C₂/(λ*T)`
 
 # Arguments:
 
@@ -223,10 +269,10 @@ Blackbody spectral intensity (spectral radiance)  with intermediate matrix provi
 `amat` - matrix of intermediate coefficients,  [Nx3]
 `λ` - wavelength in μm,  [Nx0]
 """
-    function ibb(λ::AbstractVector , amat::AbstractMatrix) # internal version with provided coefficients matrix
-        a2 = @view amat[: , 2]
-        return @. C₁ * a2 * ((1/λ)^5)     
-    end
+function ibb(λ::AbstractVector , amat::AbstractMatrix) # internal version with provided coefficients matrix
+    a2 = @view amat[: , 2]
+    return @. C₁ * a2 * ((1/λ)^5)     
+end
         """
         ibb(λ::AbstractVector,T::AbstractVector)
 
@@ -245,8 +291,8 @@ Blackbody spectral intensity (spectral radiance),  [W/m²⋅sr⋅μm]
             """
         ibb!(i::AbstractVector , λ::AbstractVector , T::Number)
         
-        In-place blackbody intensity,  [W/m²⋅sr⋅μm]
-        `Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` , where `a₁=C₂/(λT)`
+In-place blackbody intensity,  [W/m²⋅sr⋅μm]
+`Ibb = (λ⁻⁵)* C₁/(eᵃ¹-1)` , where `a₁=C₂/(λT)`
 
 # Arguments:
 
@@ -271,10 +317,10 @@ In-place blackbody intensity with intermediate coefficients provided externally,
 `λ` - wavelength in μm,  [Nx0]
 `amat` - matrix of intermediate coefficients,  [Nx3]
     """
-    function ibb!(i::AbstractVector , λ::AbstractVector , amat::AbstractMatrix) # this version is used in emissivity approximation 
-            a2 = @view amat[: , 2] # Ibb = (λ⁻⁵)* C₁*a₂
-            return @. i = C₁ * a2 *((1/λ)^5) 
-        end   
+function ibb!(i::AbstractVector , λ::AbstractVector , amat::AbstractMatrix) # this version is used in emissivity approximation 
+        a2 = @view amat[: , 2] # Ibb = (λ⁻⁵)* C₁*a₂
+        return @. i = C₁ * a2 *((1/λ)^5) 
+    end   
 
     """
             ∇ₜibb(λ,T)
@@ -535,7 +581,7 @@ spectral scattering and absorption coefficients) `α(λ)` for temperature `T`:
 
 `αᵣ = (∫(1/α(λ))⋅∇ₜibb(λ,T)dλ/∫∇ₜibb(λ,T)dλ)⁻¹`  
 """
-rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,∇ₜibb,inv))
+rosseland_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α , λ , T , ∇ₜibb , inv))
 
 """
     planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number)
@@ -545,7 +591,7 @@ spectral scattering and absorption coefficients) α(λ) for temperature T:
 
 `αᵣ = (∫(1/α(λ))⋅ibb(λ,T)dλ/∫ibb(λ,T)dλ)⁻¹`   
 """
-planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α,λ,T,ibb,inv)) #identity
+planck_averaged_attenuation(α::AbstractVector, λ::AbstractVector,T::Number) = inv(weighted_average(α , λ , T , ibb , inv)) #double inversion
 
 """
     planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number)
@@ -556,13 +602,14 @@ Evaluates the Planck-averaged value of `x(λ)` for temperature `T`:
 
 E.g. can be used to evaluate the integral  from  spectral emissivity
 """
-planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x,λ,T,ibb,identity)
+planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x , λ , T , ibb , identity)
+const Dfunctions = Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)}
 """
     weighted_average(α::AbstractVector, 
                         λ::AbstractVector,
-                        T , 
-                        g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
-                        f::F = identity) where F <: Function
+                        T::Number, 
+                        g::Dfunctions,
+                        f::F = identity) where F
 
 Generic function to evaluate the averaged value of some `f(x)` function of variable `x` dependent
 on wavelength `λ` for temperature `T`. 
@@ -574,62 +621,92 @@ the default value of f is `identity`, e.g. if f = inv:
 `xᵣ = ∫g(λ,T)/x(λ)dλ/∫g(λ,T)dλ`
 
 """
-function weighted_average(α::AbstractVector, 
+function weighted_average(α , λ , T , g , f = identity)
+        (s , sn) = weighted_value(α , λ ,T , g , f)
+        return s/sn
+end
+
+"""
+    weighted_value(     α::AbstractVector, 
                         λ::AbstractVector,
-                        T::Number , 
+                        T , 
                         g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
                         f::F = identity) where F <: Function
+
+Returns the tuple of  `(f(α)g(λ,T)dλ , ∫g(λ,T)dλ)`
+
+"""
+function weighted_value(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D, 
+                        g::Dfunctions,
+                        f::F = identity) where {F   , D <: Number , Q <: Number , L <: Number}
+
     N = length(α)
-    @assert length(λ)==N
+    @assert length(λ) == N
 
-    s = 0.0
-    sn = 0.0
+    DD = promote_type(Q , D , L)
 
-    norm_val = maximum(l->g(l,T) , λ) # normalizing the value of Planck function
-    nrm = 1/norm_val
+    s = zero(DD)
+    sn = zero(DD)
+
+    (lmin , lmax) = extrema(λ)
+    (_ , norm_val) = maximum_on_interval(g , lmin , lmax , T)    
+    nrm = inv(norm_val)
 
     g_start = g(λ[begin], T) * nrm
     
-    @inbounds for i in 1:N-1
+    inv2 = inv(DD(2))
+    inv3 = inv(DD(3))
+    inv4 = inv(DD(4))
 
+    @inbounds for i in 1:N-1
         lstart = λ[i]
         lend = λ[i + 1]
+        
+        h = lend - lstart
+        h_half = h * inv2
 
-        lcentre = (lstart + lend )/2
+        b1 = DD(f(α[i]))
+        b2 = (DD(f(α[i+1])) - b1) / h
 
-        # linear fitting of α
-        b1 = f( α[i] ) 
-        b2 = (f(α[i+1]) - b1)/(lend - lstart)
-        b1 = b1 - b2 * lstart
-
-        #second order polynomial fitting of f within the interval
-        g_end = g(lend , T) * nrm #g_T(lend)
-        g_centre = g(lcentre , T) * nrm
-        (a1 , a2 , a3) = second_order_polynomial_fit(
-                                                    lstart , lcentre , lend ,
-                                                    g_start,
-                                                    g_centre,
-                                                    g_end
-                                                )
+        g_end = g(lend, T) * nrm
+        g_centre = g(lstart + h_half, T) * nrm
+        
+        (a1, a2, a3) = second_order_polynomial_fit(
+            zero(D), h_half, h,
+            g_start, g_centre, g_end
+        )
 
         g_start = g_end                                        
-        # g(l) = a1 + a2*l + a3*l²
-        # f(l) = b1 + b2*l
-        # ∫f(x)⋅g(x)dx = c2*l + c3*l² + c4*l³ + c5*l⁴
-        c2=a1*b1
-        c3=(a1*b2 + a2*b1)/2
-        c4 = (a2*b2 + a3*b1)/3
-        c5=a3*b2/4
-        #evaluating the integrand values
-        s += fourth_order_polynomial_eval(0.0 , c2 , c3 , c4 , c5 , lend) -
-                            fourth_order_polynomial_eval(0.0 , c2 , c3 , c4 , c5 , lstart)
-        sn += fourth_order_polynomial_eval(0.0 , a1 , a2/2 , a3/3 , 0.0 , lend) -
-                         fourth_order_polynomial_eval(0.0 , a1 , a2/2 , a3/3 , 0.0 , lstart)
+
+        c2 = a1 * b1
+        c3 = (a1 * b2 + a2 * b1) * inv2
+        c4 = (a2 * b2 + a3 * b1) * inv3
+        c5 = a3 * b2 * inv4
+
+        s  += @evalpoly(h, zero(DD), c2, c3, c4, c5)
+        sn += @evalpoly(h, zero(DD), a1, a2 * inv2, a3 * inv3)
     end 
-    return s/sn
+    
+    return (s * norm_val , sn * norm_val)
+end
+function maximum_on_interval(g::Dfunctions , lmin , lmax , T)
+    λmax = λₘ(g , T) # selected function maximum value   
+    
+    Lmax = if λmax <= lmax
+                if λmax >= lmin
+                    λmax
+                else # λmax < lmin
+                    lmin    
+                end
+            else
+                lmax
+            end
+    return (Lmax , g(Lmax , T))
 end
     """
-    λₘ(T)
+    λₘ(T::Number)
 
 The wavelength (in μm) of bb intensity maximum vs temperature `T` 
 `argmax(Planck(T))`  - Wien's displacement law
@@ -638,18 +715,39 @@ The wavelength (in μm) of bb intensity maximum vs temperature `T`
 
 `T` - temperature in Kelvins
 """
-    function λₘ(T)
-        # maximum wavelength of BB intencity in μm at temperature T (in Kelvins)
-        C₃./T
-    end
+λₘ(T::Number) = C₃/T
+"""
+    λₘ(::Union{typeof(ibb) , typeof(∇ₜibb) , typeof(∇²ₜibb)} , T::Number)
+
+The wavelength (in μm) of bb intensity  , its first or second derivaitve maximum vs temperature `T` 
+
+# Arguments:
+
+`T` - temperature in Kelvins
+"""
+function λₘ(::Dfunctions , T::Number)  end
+
+λₘ(::typeof(ibb) , T::Number) = C₃/T
+λₘ(::typeof(∇ₜibb) , T::Number) = C₃_∇₁/T
+λₘ(::typeof(∇²ₜibb) , T::Number) = C₃_∇₂/T
+
     """
-    ibb_max(T)
+    bb_max(T::Number)
 
 Blackbody instensity at maximum value 
 """
-function ibb_max(T)
-       return  @. C₄ * T^5
-    end
+bb_max(T::Number) = C₄ * T^5
+"""
+    bb_max(bb_function , T)
+
+Returns the value of function at a maximum 
+`bb_function` can be `ibb` ,   `∇ₜibb` ,  `∇²ₜibb`
+
+"""
+bb_max(::typeof(ibb) , T::Number) =  C₄ * T^5
+bb_max(::typeof(∇ₜibb), T::Number) = C₄_∇₁ * T^4
+bb_max(::typeof(∇²ₜibb) , T::Number) = C₄_∇₂ * T^3
+
     """
     tₘ(λ)
 
@@ -677,7 +775,7 @@ Evaluates bright temperature for single wavelength pyrometer
 `ϵ` - emissivity 
     
 """
-function bright_temperature(i, λ; ϵ=1.0)
+function bright_temperature(i , λ ; ϵ::Number = 1.0)
         return C₂ / (λ * log1p(ϵ * C₁ / (i * λ^5)))
     end
 """
@@ -784,6 +882,13 @@ Units: W/(m²⋅sr⋅K)
 `T` - temperature, K
 """
 ∇²ₜpower(T) = 12.0 * σ * (T^2) / pi
+
+"""
+    Dₜpower(T)
+
+Tuple of total intensity , fisrt and second derivative with respect to temeperature
+"""
+Dₜpower(T) = (power(T) , ∇ₜpower(T)   , ∇²ₜpower(T) )
     # dummy type to drop setindex
     struct Drop end
     @inline Base.setindex!(::Drop, _ , idx...) = nothing
@@ -824,7 +929,7 @@ function Dₜibb( λ::Number, T::Number)
        """
     Dₜibb( λ::Number, T::Number , skip_second_derivative::Val{true})
 
-Skips the second derivative evaluation `` Dₜibb( λ, T , Val(true))``
+Skips the second derivative evaluation `Dₜibb( λ, T , Val(true))`
 """
 function Dₜibb( λ::Number, T::Number , skip_second_derivative::Val{true})
             a1, a2, a3 = a₁₂₃(λ, T)
@@ -1061,7 +1166,8 @@ function ∇²ₜband_power(T , band_power_value; λₗ=0.0 , λᵣ=Inf)
     ∫ibbₗ(T;λₗ=0.0,λᵣ=Inf,tol=1e-6)
 
 Relative (with respect to the integral power in the whole spectrum)
-integral intensity of bb in the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
+integral intensity of bb in the spectral range `λₗ...λᵣ` 
+(by default the range is 0...inf)
 
 # Arguments:
 
@@ -1109,16 +1215,16 @@ function ∫ibbₗ(T::Q; λₗ=0.0 , λᵣ=Inf , tol=1e-8) where Q
         """
         ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
 
-        Relative (with respect to the integral power in the whole spectrum)
-        integral intensity derivative of bb in the spectral range λₗ...λᵣ (by default the range is 0...inf)
+Relative (with respect to the integral power in the whole spectrum)
+integral intensity derivative (analytic) of bb intensity fraction 
+in the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
 
-        # Arguments:
-            T - temperature,Kelvins
-            (optional)
-            λₗ - left wavelength boundary, μm
-            λᵣ - right wavelength boundary, μm
-            tol - intergation tolerance
-    """
+# Arguments:
+T - temperature,Kelvins
+(optional)
+`λₗ` - left wavelength boundary, μm
+`λᵣ` - right wavelength boundary, μm
+"""
     function ∇ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
                 @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
                 if λₗ > λᵣ
@@ -1138,14 +1244,14 @@ function ∫ibbₗ(T::Q; λₗ=0.0 , λᵣ=Inf , tol=1e-8) where Q
     ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf)
 
 Relative (with respect to the integral power in the whole spectrum)
-integral intensity second derivative of bb in the spectral range `λₗ...λᵣ` (by default the range is `0...inf`)
+integral intensity derivative (analytic) of bb intensity fraction 
+in the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
 
 # Arguments:
 `T` - temperature,Kelvins
 (optional)
 `λₗ` - left wavelength boundary, μm
 `λᵣ` - right wavelength boundary, μm
-`tol` - intergation tolerance
     """
     function ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf )
         @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
@@ -1206,12 +1312,6 @@ returns units string of output quantity  return
     units(::typeof(tₘ)) = "K"
 
 
-    ∇ₜ(::typeof(ibb)) = ∇ₜibb
-    ∇ₜ(::typeof(∇ₜibb)) = ∇²ₜibb
-    ∇²ₜ(::typeof(ibb)) = ∇²ₜibb
-    ∇ₗ(::typeof(ibb)) = ∇ₗibb
-    ∇ₗ(::typeof(∇ₗibb)) = ∇²ₗibb
-    ∇²ₗ(::typeof(ibb)) = ∇²ₗibb
 
         """
         second_order_polynomial_fit(x1,x2,x3,g1,g2,g3)
@@ -1396,37 +1496,113 @@ function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Numbe
                                                             i2, di2, d2i2)
         )
 end
-"""
-    Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    """
+        Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
 
-Ignores the second derivative evaluation 
-"""
-function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    Ignores the second derivative evaluation 
+    """
+    function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
 
-    (i1, di1 , _) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , skip_second_derivative; tol = tol)
-    (i2, di2 , _) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , skip_second_derivative; tol = tol)
+        (i1, di1 , _) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , skip_second_derivative; tol = tol)
+        (i2, di2 , _) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , skip_second_derivative; tol = tol)
 
-    return (    
-                e_slope * i1/i2 ,
-                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
-                nothing
+        return (    
+                    e_slope * i1/i2 ,
+                    e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+                    nothing
+            )
+    end
+    @inline function _spectral_ratio_second_derivative(
+                    I1::Number, dI1_dT::Number, d2I1_dT2::Number,
+                    I2::Number, dI2_dT::Number, d2I2_dT2::Number
         )
-end
-@inline function _spectral_ratio_second_derivative(
-                I1::Number, dI1_dT::Number, d2I1_dT2::Number,
-                I2::Number, dI2_dT::Number, d2I2_dT2::Number
-    )
-    I2_sq = I2 * I2
-    inv_I2_cub = 1.0 / (I2_sq * I2) 
-    
-    numerator = d2I1_dT2 * I2_sq - 
-                I1 * I2 * d2I2_dT2 - 
-                2.0 * dI1_dT * dI2_dT * I2 + 
-                2.0 * I1 * (dI2_dT * dI2_dT)
-                
-    return numerator * inv_I2_cub
-end
+        I2_sq = I2 * I2
+        inv_I2_cub = 1.0 / (I2_sq * I2) 
+        
+        numerator = d2I1_dT2 * I2_sq - 
+                    I1 * I2 * d2I2_dT2 - 
+                    2.0 * dI1_dT * dI2_dT * I2 + 
+                    2.0 * I1 * (dI2_dT * dI2_dT)
+                    
+        return numerator * inv_I2_cub
+    end
 
-include("_chain_rules.jl")
+    ∇ₗ(::typeof(ibb)) = ∇ₗibb
+    ∇ₗ(::typeof(∇ₗibb)) = ∇²ₗibb
+    ∇²ₗ(::typeof(ibb)) = ∇²ₗibb
+    # generating operators 
+    for f in (:ibb, :band_power, :power, :spectral_ratio , :spectral_band_ratio)
+        f_orig  = Symbol(f)          #  :ibb
+        f_deriv = Symbol("∇ₜ", f)    #  :∇ₜibb
+        f_sec   = Symbol("∇²ₜ", f)   #  :∇²ₜibb
+        @eval begin
+            ∇ₜ(::typeof($f_orig)) = $f_deriv
+            ∇²ₜ(::typeof($f_orig)) = $f_sec
+            ∇ₜ(::typeof($f_deriv)) = $f_sec
+        end
+    end
+    ∫ₗ(::typeof(ibb)) = power
+    ∫ₗ(::typeof(∇ₜibb)) = ∇ₜpower
+    ∫ₗ(::typeof(∇²ₜibb)) = ∇²ₜpower
+    struct BandIntegrator{F , L1 ,  L2}
+        l1::L1
+        l2::L2
+        BandIntegrator{F}(l1::L1  , l2::L2) where {F , L1 , L2} = new{F , L1 , L2}(l1 , l2)
+    end
+    struct WeightedIntegrator{F , LT , AT}
+        f::F 
+        l::LT
+        a::AT
+    end
+    (w::WeightedIntegrator)(t::Number) = first(weighted_value(w.a , w.l , t , w.f , identity ))
+    (b::BandIntegrator{typeof(ibb)})(T::Number) =   band_power(T , λₗ = b.l1 , λᵣ = b.l2)
+    (b::BandIntegrator{typeof(∇ₜibb)})(T::Number) =  ∇ₜband_power(T , λₗ = b.l1 , λᵣ = b.l2)
+    (b::BandIntegrator{typeof(∇²ₜibb)})(T::Number) =   ∇²ₜband_power(T , λₗ = b.l1 , λᵣ = b.l2)
+
+    """
+    ∫ₗ(f::F , λ₁::Number, λ₂::Number) where F <: $(Dfunctions)
+
+Returns a callable object which returns the f function integral as a function of temperature
+```julia
+f = ∫ₗ(ibb , 2.3 , 4.5)
+f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spectral range at temperature 1273,5 K
+```
+"""
+    ∫ₗ(::F, λ₁::Number, λ₂::Number) where F <: Dfunctions = BandIntegrator{F}(λ₁ , λ₂)
+    ∫ₗ(g::Dfunctions , λ::AbstractVector , α::AbstractVector) =WeightedIntegrator( g , λ , α )
+
+    """
+        ∇ₜ(f) 
+
+        Differentiation operator returns the derivatives function for the input function 
+    [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+    and their derivatives e.g [`∇ₜband_power`](@ref) etc.
+
+    # Examples
+    ```julia
+    ∇ₜ(ibb)        # -> ∇ₜibb
+    (∇ₜ∘∇ₜ)(ibb)   # ->  ∇²ₜspectral_band_ratio
+    ```
+    """
+    function ∇ₜ end
+      """
+        ∇²ₜ(f) 
+
+        Differentiation operator returns the derivatives of function
+    [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+
+    # Examples
+    ```julia
+     ∇²ₜ(ibb)          # -> ∇²ₜibb
+     ∇²ₜ(band_power)   # ->  ∇²ₜband_power
+    ```
+    """  
+    function ∇²ₜ end        
+
+    include("_chain_rules.jl")
+    function symbolize end
+    export symbolize
 
 end

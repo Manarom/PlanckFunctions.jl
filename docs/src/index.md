@@ -2,16 +2,20 @@
 # PlanckFunctions.jl
 
 ## General description
-PlanckFunctions.jl is designed to calculate the Planck's function thermal emission spectra and its derivatives.
+PlanckFunctions.jl is designed to calculate the Planck's function thermal emission spectra ,
+it's analytical derivatives and integrals.
 
-- PlanckFunctions.jl package contains several functions to evaluate: 
-    - Blackbody spectral intensity (Planck function)
-    - The first and the second derivatives of Planck function with respect to the wavelength and temperature 
-    - Planck function fast integration over the specified wavelength region  
+- PlanckFunctions.jl package provide the following functions together with their first and second derivatives with respect to temperature: 
+
+    - Blackbody spectral intensity (Planck function) 
+    - Integral intensity within specified wavelength region 
+    - Two wavelength intensities spectral ratio
+    - Two spectral bands integral intensities ratio 
 
 ## Contact
 
-To contact me, please do it through the [GitHub repository](https://github.com/Manarom/PlanckFunctions.jl).
+To report bugs, suggest features, or contribute code, please submit an issue or pull request through the [GitHub Repository](https://github.com/Manarom/PlanckFunctions.jl).
+
 
 ## License
 

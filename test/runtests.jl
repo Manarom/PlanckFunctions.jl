@@ -140,22 +140,25 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
         println("ok")
 
         print("testing weighted average function ...")
-                    λ = collect(range(0.8, 2.5, length=500))
-                    α = copy(λ)
-                    
-                    f_test = inv
+            λ = collect(range(0.8, 2.5, length=500))
+            α = copy(λ)
+            
+            f_test = inv
 
-                    num_integral, _ = quadgk(l -> f_test(l) * PF.ibb(l, T), λ[begin], λ[end], rtol=1e-14)
-                    
-                    den_integral, _ = quadgk(l -> PF.ibb(l, T), λ[begin], λ[end], rtol=1e-14)
-                    den_int_sum = PF.band_power(T , λₗ = λ[begin] , λᵣ=λ[end] , tol =1e-14)
-                    @test den_integral ≈ den_int_sum rtol = 1e-8
+            for g in (PF.ibb , PF.∇ₜibb , PF.∇²ₜibb)
+                
+                # numerator numeric evaluation 
+                num_integral, _ = quadgk(l -> f_test(l) * g(l, T), λ[begin], λ[end], rtol=1e-14)
+                #denominator numeric evaluation
+                den_integral, _ = quadgk(l -> g(l, T), λ[begin], λ[end], rtol=1e-14)
 
-                    expected = num_integral / den_integral
-                                        
-                    actual = PF.weighted_average(α, λ, T, PF.ibb , inv)
-                    @test actual ≈ expected atol = 1e-5
-                   
+                expected = num_integral / den_integral # numeric value of averaged 
+                                    
+                actual = PF.weighted_average(α, λ, T, g , f_test)
+
+                @test actual ≈ expected atol = 1e-5
+
+            end
         println("ok")
 
         print("testing based on externally provided data ... ") 

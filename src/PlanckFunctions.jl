@@ -17,11 +17,12 @@ module PlanckFunctions
             
             spectral_band_ratio , ∇ₜspectral_band_ratio, ∇²ₜspectral_band_ratio, Dₜspectral_band_ratio, # two band integral intensities ratio
                   
-            planck_averaged, 
-            planck_averaged_attenuation,
-            rosseland_averaged_attenuation,
+            planck_averaged, planck_averaged_attenuation, rosseland_averaged_attenuation,
             weighted_average,
-            weighted_value
+            weighted_value , 
+            planck_weighted_value , Dₜplanck_weighted_value,
+            weighted_values_ratio , 
+            planck_weighted_values_ratio , Dₜplanck_weighted_values_ratio
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
@@ -633,7 +634,7 @@ end
                         g::Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)},
                         f::F = identity) where F <: Function
 
-Returns the tuple of  `(f(α)g(λ,T)dλ , ∫g(λ,T)dλ)`
+Returns the tuple of  `(∫f(α)g(λ,T)dλ , ∫g(λ,T)dλ)`
 
 """
 function weighted_value(α::AbstractVector{Q}, 
@@ -691,6 +692,189 @@ function weighted_value(α::AbstractVector{Q},
     
     return (s * norm_val , sn * norm_val)
 end
+
+"""
+    weighted_values_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D, 
+                        g::Dfunctions,
+                        f::F = identity) where {F   , D <: Number , Q <: Number , L <: Number}
+
+
+Returns the ratio of two weighted values  `(∫f(α1)g(λ,T)dλ1 / ∫f(α2)g(λ,T)dλ2)`
+"""
+function weighted_values_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D, 
+                        g::Dfunctions,
+                        f::F = identity) where {F   , D <: Number , Q <: Number , L <: Number}
+
+    return first(weighted_value(α1 , λ1 , T , g , f))/first(weighted_value(α2 , λ2 , T , g , f))
+
+end
+"""
+    Dₜweighted_values_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D ) where { D <: Number , Q <: Number , L <: Number}
+
+Returns the tuple of the value, first and second derivatives of two weighted values ratio :
+
+# Arguments 
+`α1` - first wavelength dependent quantity, 
+`λ1` - first wavelengths range, μm
+`α2`-  second wavelength dependent quantity, 
+`λ2`-  second wavelengths range, μm
+T - temperature , K
+
+# Returns
+``( ∫α1⋅g(λ,T)dλ1 / ∫f(α2)g(λ,T)dλ2 , 
+
+   d/dT [∫α1⋅g(λ,T)dλ1/∫α2⋅g(λ,T)dλ2] , 
+
+   d²/dT² [ ∫α1⋅g(λ,T)dλ1/∫α2⋅g(λ,T)dλ2 ]
+)``
+"""
+function Dₜweighted_values_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D ) where { D <: Number , Q <: Number , L <: Number}
+
+    (f1 , df1 , d2f1 ) = Dₜweighted_value(α1 , λ1 , T)
+    (f2 , df2 , d2f2 ) = Dₜweighted_value(α2 , λ2 , T)
+    return    return (    
+                f1/f2 ,
+                (df1 * f2 - df2 * f1 )/f2^2 , 
+                _spectral_ratio_second_derivative(f1, df1, d2f1,
+                                                            f2, df2, d2f2)
+        )
+
+end
+"""
+    Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
+
+Evaluates the integral of `e(λ)` over three weighting functions of 
+Planck's function and its first and second derivaitve: `ibb`, `∇ₜibb` и `∇²ₜibb`
+
+Returns six-elements tuple (integrals and normalizers) :
+`( ∫α(λ)ibb(λ,T)dλ , ∫α(λ)∇ₜibb(λ,T)dλ , ∫α(λ)∇²ₜibb(λ,T)dλ , 
+   ∫ibb(λ,T)dλ , ∫∇ₜibb(λ,T)dλ , ∫∇²ₜibb(λ,T)dλ)`
+"""
+function Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
+    N = length(e)
+    @assert length(λ) == N
+
+    DD = promote_type(Q, D, L)
+
+    # starting summations
+    s1, sn1 = zero(DD), zero(DD) #  ibb
+    s2, sn2 = zero(DD), zero(DD) #  ∇ₜibb
+    s3, sn3 = zero(DD), zero(DD) #  ∇²ₜibb
+
+    # normalizators 
+    (lmin, lmax) = extrema(λ)
+    (_, norm_val1) = maximum_on_interval(ibb, lmin, lmax, T)    
+    (_, norm_val2) = maximum_on_interval(∇ₜibb, lmin, lmax, T)    
+    (_, norm_val3) = maximum_on_interval(∇²ₜibb, lmin, lmax, T)    
+
+    nrm1 = inv(norm_val1)
+    nrm2 = inv(norm_val2)
+    nrm3 = inv(norm_val3)
+
+    (g1_start , g2_start  , g3_start) = Dₜibb(λ[begin], T) 
+    g1_start *= nrm1
+    g2_start *= nrm2
+    g3_start *= nrm3
+
+    
+    inv2 = inv(DD(2))
+    inv3 = inv(DD(3))
+    inv4 = inv(DD(4))
+
+    @inbounds for i in 1:N-1
+        lstart = λ[i]
+        lend = λ[i + 1]
+        
+        h = lend - lstart
+        h_half = h * inv2
+
+        # e approximaiton coefficients 
+        b1 = DD(e[i])
+        b2 = (DD(e[i+1]) - b1) / h
+
+        # functions values 
+        (g1_end , g2_end , g3_end) = Dₜibb(lend , T)
+        g1_end *= nrm1
+        g2_end *= nrm2
+        g3_end *= nrm3
+
+        g1_centre , g2_centre , g3_centre =  Dₜibb(lstart + h_half , T)
+        g1_centre *= nrm1
+        g2_centre *= nrm2
+        g3_centre *= nrm3
+        
+        # hardcoded polyfit
+        (a1_1, a2_1, a3_1) = second_order_polynomial_fit(zero(D), h_half, h, g1_start, g1_centre, g1_end)
+        (a1_2, a2_2, a3_2) = second_order_polynomial_fit(zero(D), h_half, h, g2_start, g2_centre, g2_end)
+        (a1_3, a2_3, a3_3) = second_order_polynomial_fit(zero(D), h_half, h, g3_start, g3_centre, g3_end)
+
+        # returns back 
+        g1_start = g1_end                                        
+        g2_start = g2_end                                        
+        g3_start = g3_end                                        
+
+        # ibb
+        c2_1 = a1_1 * b1
+        c3_1 = (a1_1 * b2 + a2_1 * b1) * inv2
+        c4_1 = (a2_1 * b2 + a3_1 * b1) * inv3
+        c5_1 = a3_1 * b2 * inv4
+
+        # ∇ₜibb
+        c2_2 = a1_2 * b1
+        c3_2 = (a1_2 * b2 + a2_2 * b1) * inv2
+        c4_2 = (a2_2 * b2 + a3_2 * b1) * inv3
+        c5_2 = a3_2 * b2 * inv4
+
+        # ∇²ₜibb
+        c2_3 = a1_3 * b1
+        c3_3 = (a1_3 * b2 + a2_3 * b1) * inv2
+        c4_3 = (a2_3 * b2 + a3_3 * b1) * inv3
+        c5_3 = a3_3 * b2 * inv4
+
+        # Horner's scheme (explicit)
+        #=s1  += h * (c2_1 + h * (c3_1 + h * (c4_1 + h * c5_1)))
+        sn1 += h * (a1_1 + h * (a2_1 * inv2 + h * (a3_1 * inv3)))
+
+        s2  += h * (c2_2 + h * (c3_2 + h * (c4_2 + h * c5_2)))
+        sn2 += h * (a1_2 + h * (a2_2 * inv2 + h * (a3_2 * inv3)))
+
+        s3  += h * (c2_3 + h * (c3_3 + h * (c4_3 + h * c5_3)))
+        sn3 += h * (a1_3 + h * (a2_3 * inv2 + h * (a3_3 * inv3)))=#
+
+        s1  += @evalpoly(h, zero(DD), c2_1, c3_1, c4_1, c5_1)
+        sn1 += @evalpoly(h, zero(DD), a1_1, a2_1 * inv2, a3_1 * inv3)
+        s2  += @evalpoly(h, zero(DD), c2_2, c3_2, c4_2, c5_2)
+        sn2 += @evalpoly(h, zero(DD), a1_2, a2_2 * inv2, a3_2 * inv3)
+        s3  += @evalpoly(h, zero(DD), c2_3, c3_3, c4_3, c5_3)
+        sn3 += @evalpoly(h, zero(DD), a1_3, a2_3 * inv2, a3_3 * inv3)
+    end 
+    
+    return (
+        s1 * norm_val1, s2 * norm_val2, s3 * norm_val3, 
+        sn1 * norm_val1, sn2 * norm_val2, sn3 * norm_val3
+    )
+end
+
 function maximum_on_interval(g::Dfunctions , lmin , lmax , T)
     λmax = λₘ(g , T) # selected function maximum value   
     
@@ -1570,7 +1754,7 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
 """
     ∫ₗ(::F, λ₁::Number, λ₂::Number) where F <: Dfunctions = BandIntegrator{F}(λ₁ , λ₂)
     ∫ₗ(g::Dfunctions , λ::AbstractVector , α::AbstractVector) =WeightedIntegrator( g , λ , α )
-
+ weighted_value(e , l , t , ::typeof(Dₜibb)) = Dₜweighted_value(e , l , t)
     """
         ∇ₜ(f) 
 

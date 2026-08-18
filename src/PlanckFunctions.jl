@@ -1,6 +1,71 @@
 # PlanckFunctions and its derivatives all tempeatures should be in Kelvins, all wavelengths in μm
+
+
+"""
+    PlanckFunctions
+
+A comprehensive suite of tools for evaluating properties of the Planck thermal emission spectrum, 
+including spectral intensity (radiance), integrated band power, and their ratios. 
+
+The module provides exact analytical derivatives with respect to both wavelength (λ) 
+and temperature (T), optimized for high-performance physics and pyrometry calculations.
+
+### Core Design Principles
+
+* **Derivative Naming Convention**: 
+  For any base function `foo`, its first and second temperature derivatives are available via `∇ₜfoo` and `∇²ₜfoo`.
+* **Combined Evaluation**: 
+  Functions prefixed with `Dₜ` (e.g., `Dₜfoo`) evaluate the base value, the first derivative, and the second derivative simultaneously, returning them as a single `Tuple` to prevent redundant calculations.
+* **Functional Operators**: 
+  The symbols `∇ₜ` and `∇²ₜ` can be used directly as operators on functions, mapping a base function to its corresponding derivative function (e.g., `PlanckFunctions.∇ₜ(PlanckFunctions.ibb) -> ∇ₜibb`).
+  The symbol `∫ₗ` applied on function mapps it to its wavelength integrator , e.g. 
+    
+    
+
+### Physical Units
+
+* **Wavelength (λ)**: Microns (μm)
+* **Temperature (T)**: Kelvins (K)
+
+---
+
+### API Reference
+
+#### Spectral Radiance & Core Functions
+
+* [`ibb`](@ref): Spectral intensity (spectral radiance) in [W/m²⋅sr⋅μm].
+* [`∇ₜibb`](@ref): First derivative of spectral intensity with respect to temperature [W/m²⋅sr⋅μm·K].
+* [`∇²ₜibb`](@ref): Second derivative of spectral intensity with respect to temperature [W/m²⋅sr⋅μm·K²].
+
+All this functions has also and integrated versions , which can be obtained both by direct name 
+or by applying the [`∫ₗ`](@ref) [`∫ₗ`](@ref) operator 
+
+* [`Dₜibb`](@ref): Base functions, its first and second derivative.
+* [`ibb!`](@ref),  [`∇ₜibb!`](@ref),  [`∇²ₜibb!`](@ref),  [`Dₜibb!`](@ref) - in-place versions 
+* [`∇ₗibb`](@ref): First derivative of spectral intensity with respect to wavelength [W/m²⋅sr⋅μm²].
+* [`∇²ₗibb`](@ref): Second derivative of spectral intensity with respect to wavelength [W/m²⋅sr⋅μm³].
+
+
+#### Integrated Band Power
+* [`band_power`](@ref), [`∇ₜband_power`](@ref), [`∇²ₜband_power`](@ref): Total integrated intensity within a specified wavelength region along with its temperature derivatives [W/m²⋅sr].
+
+#### Analytical Ratios (Continuous Pyrometry)
+* [`spectral_ratio`](@ref), [`∇ₜspectral_ratio`](@ref), [`∇²ₜspectral_ratio`](@ref): Ratio of spectral intensities at two distinct discrete wavelengths (useful for ratio pyrometers).
+* [`spectral_band_ratio`](@ref), [`∇ₜspectral_band_ratio`](@ref), [`∇²ₜspectral_band_ratio`](@ref): Ratio of integrated spectral intensities for two distinct wavelength bands.
+
+#### Averaging & Continuum Mechanics
+* [`planck_averaged`](@ref): Planck-averaged spectral quantity (e.g., total emittance).
+* [`planck_averaged_attenuation`](@ref): Planck-averaging applied specifically to spectral attenuation coefficients.
+* [`rosseland_averaged_attenuation`](@ref): Rosseland-averaging applied to spectral attenuation coefficients.
+* [`weighted_average`](@ref): General-purpose function to compute a custom weighted average over a spectrum.
+
+#### Discrete/Tabular Integration (Experimental Data Pyrometry)
+* [`planck_weighted`](@ref), [`∇ₜplanck_weighted`](@ref), [`∇²ₜplanck_weighted`](@ref), [`Dₜplanck_weighted`](@ref): Integrates a discrete, wavelength-dependent experimental quantity (such as emissivity or detector response) weighted by the Planck function and its derivatives.
+* [`planck_weighted_ratio`](@ref), [`∇ₜplanck_weighted_ratio`](@ref), [`∇²ₜplanck_weighted_ratio`](@ref), [`Dₜplanck_weighted_ratio`](@ref): Computes the ratio of two independent Planck-weighted discrete quantities and its analytical temperature derivatives.
+"""
 module PlanckFunctions
     using ChainRulesCore
+    import Base: /
     export   ∫ibbₗ, Tₖ, 
 
             ibb , ∇ₜibb, ∇²ₜibb, Dₜibb, # temperature derivatives 
@@ -16,61 +81,19 @@ module PlanckFunctions
             spectral_ratio, ∇ₜspectral_ratio, ∇²ₜspectral_ratio, Dₜspectral_ratio, # two wavelengths intensities ratio
             
             spectral_band_ratio , ∇ₜspectral_band_ratio, ∇²ₜspectral_band_ratio, Dₜspectral_band_ratio, # two band integral intensities ratio
-                  
+            
+            planck_weighted ,∇ₜplanck_weighted, ∇²ₜplanck_weighted, Dₜplanck_weighted,
+
+            planck_weighted_ratio ,∇ₜplanck_weighted_ratio, ∇²ₜplanck_weighted_ratio,  Dₜplanck_weighted_ratio,
+
             planck_averaged, planck_averaged_attenuation, rosseland_averaged_attenuation,
             weighted_average,
-            weighted_value , 
-            planck_weighted_value , Dₜplanck_weighted_value,
-            weighted_values_ratio , 
-            planck_weighted_values_ratio , Dₜplanck_weighted_values_ratio
+            weighted_value , ∫ₗ , ∇ₜ , ∇²ₜ  
+
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
     const citation2 = "Risch, T.K., User's Manual: Routines for Radiative Heat Transfer and Thermometry. NASA/TM-2016-219103. 2016, Edwards, California: Armstrong flight Research Center"
     const citation3 = "https://physics.nist.gov/"
-    """
-    `PlanckFunctions` module provides a set of functions for evaluating 
-    the Planck thermal emission spectrum intensity (spectral radiance) and 
-    its derivatives with respect to wavelength and temperature. It also provides 
-    function to evaluate the integral over the wavelength radiance and Rosseland-averaged 
-    and Planck-averaged of spectral coefficients. 
-
-    Wavelength units are microns and all temperatures should be in Kelvins. 
-    
-    Main functions are:
-    [`ibb`](@ref)  - spectral intensity (spectral radiance) in [W/m²⋅sr⋅μm]
-
-    [`∇ₜibb`](@ref)  - spectral intensity first derivative with respect to temperature
-
-    [`∇²ₜibb`](@ref)  - spectral intensity second derivative with respect to temperature
-
-    [`∇ₗibb`](@ref)  - spectral intensity first derivative with respect to wavelength
-
-    [`∇²ₗibb`](@ref)  - spectral intensity second derivative with respect to wavelength
-
-    [`band_power`](@ref) , [`∇ₜband_power`](@ref) , [`∇²ₜband_power`](@ref)  - total intensity (spectral radiance) in wavelength region together with its derivatives, [W/m²⋅sr]
-
-    [`spectral_ratio`](@ref) , [`∇ₜspectral_ratio`](@ref) , [`∇²ₜspectral_ratio`](@ref)   - spectral intensity ratio for two wavelength (spectral ration pyrometer)
-
-    [`spectral_band_ratio`](@ref) , [`∇ₜspectral_band_ratio`](@ref) , [`∇²ₜspectral_band_ratio`](@ref)   - spectral intensity ratio for two wavelength wavelength bands
-    
-    [`planck_averaged`](@ref) - plack - averaged quantity (e.g. total emittance)
-    
-    [`rosseland_averaged_attenuation`](@ref) - Rosseland-averaging of spectral attenuation
-
-    [`planck_averaged_attenuation`](@ref) - Planck-averaging of spectral attenuation
-
-    [`weighted_average`](@ref) - general function to evaluate averaged 
-
-
-    Main literature sources are:
-
-    $(citation)
-    
-    $(citation2)
-
-    $(citation3)
-    """
-    PlanckFunctions
     # FUNDAMENTAL CONSTANTS 
     """
         Planck const
@@ -689,10 +712,96 @@ function weighted_value(α::AbstractVector{Q},
         s  += @evalpoly(h, zero(DD), c2, c3, c4, c5)
         sn += @evalpoly(h, zero(DD), a1, a2 * inv2, a3 * inv3)
     end 
-    
     return (s * norm_val , sn * norm_val)
 end
+"""
+    weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D, 
+                        g::Dfunctions) where { D <: Number , Q <: Number , L <: Number}
 
+  `∫α⋅g(λ,T)dλ` where g ∈ {ibb , ∇ₜibb , ∇²ₜibb}
+"""
+function weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D, 
+                        g::Dfunctions) where { D <: Number , Q <: Number , L <: Number}
+
+    N = length(α)
+    @assert length(λ) == N
+
+    DD = promote_type(Q , D , L)
+    s = zero(DD)
+    (lmin , lmax) = extrema(λ)
+    (_ , norm_val) = maximum_on_interval(g , lmin , lmax , T)    
+    nrm = inv(norm_val)
+
+    g_start = g(λ[begin], T) * nrm
+    
+    inv2 = inv(DD(2))
+    inv3 = inv(DD(3))
+    inv4 = inv(DD(4))
+
+    @inbounds for i in 1:N-1
+        lstart = λ[i]
+        lend = λ[i + 1]
+        
+        h = lend - lstart
+        h_half = h * inv2
+
+        b1 = DD(α[i])
+        b2 = (DD(α[i+1]) - b1) / h
+
+        g_end = g(lend, T) * nrm
+        g_centre = g(lstart + h_half, T) * nrm
+        
+        (a1, a2, a3) = second_order_polynomial_fit(
+            zero(D), h_half, h,
+            g_start, g_centre, g_end
+        )
+
+        g_start = g_end                                        
+        c2 = a1 * b1
+        c3 = (a1 * b2 + a2 * b1) * inv2
+        c4 = (a2 * b2 + a3 * b1) * inv3
+        c5 = a3 * b2 * inv4
+        s  += @evalpoly(h, zero(DD), c2, c3, c4, c5)
+    end 
+    return s * norm_val 
+end
+
+
+
+"""
+    planck_weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+Evaluates `∫α(λ)⋅ibb(λ,T)dλ` using numeric integration
+
+"""
+planck_weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}  = weighted(α , λ , T , ibb)
+ """
+    planck_weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}\
+
+Evaluates `∫α(λ)⋅∇ₜibb(λ,T)dλ` using numeric integration
+"""
+∇ₜplanck_weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}  = weighted(α , λ , T , ∇ₜibb)           
+"""
+    ∇²ₜplanck_weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+
+Evaluates `∫α(λ)⋅∇²ₜibb(λ,T)dλ` using numeric integration
+"""
+∇²ₜplanck_weighted(α::AbstractVector{Q}, 
+                        λ::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}  = weighted(α , λ , T , ∇²ₜibb)                                      
 """
     weighted_values_ratio(
                         α1::AbstractVector{Q}, 
@@ -719,7 +828,69 @@ function weighted_values_ratio(
 
 end
 """
-    Dₜweighted_values_ratio(
+    planck_weighted_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+
+Returns the ratio of two weighted values  `(∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2)`
+"""
+function planck_weighted_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+    return planck_weighted(α1 , λ1 , T )/planck_weighted(α2 , λ2 , T)
+end
+
+"""
+    ∇ₜplanck_weighted_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+
+Returns the ratio of two weighted values  `d/dT [ (∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2) ]`
+"""
+function ∇ₜplanck_weighted_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+
+    (f1 , df1 , _ ) = Dₜplanck_weighted(α1 , λ1 , T)
+    (f2 , df2 , _ ) = Dₜplanck_weighted(α2 , λ2 , T)
+
+    return _spectral_ratio_first_derivative(f1 , df1 , f2 , df2)
+end
+"""
+    ∇²ₜplanck_weighted_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+
+Returns the ratio of two weighted values  `d²/dT² [ (∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2) ]`
+"""
+function ∇²ₜplanck_weighted_ratio(
+                        α1::AbstractVector{Q}, 
+                        λ1::AbstractVector{L},
+                        α2::AbstractVector{Q}, 
+                        λ2::AbstractVector{L},
+                        T::D) where { D <: Number , Q <: Number , L <: Number}
+
+    (f1 , df1 , d2f1 ) = Dₜplanck_weighted(α1 , λ1 , T)
+    (f2 , df2 , d2f2 ) = Dₜplanck_weighted(α2 , λ2 , T)
+    return _spectral_ratio_second_derivative(f1 , df1 , d2f1 , f2 , df2 , d2f2)
+end
+"""
+    Dₜplanck_weighted_ratio(
                         α1::AbstractVector{Q}, 
                         λ1::AbstractVector{L},
                         α2::AbstractVector{Q}, 
@@ -733,7 +904,7 @@ Returns the tuple of the value, first and second derivatives of two weighted val
 `λ1` - first wavelengths range, μm
 `α2`-  second wavelength dependent quantity, 
 `λ2`-  second wavelengths range, μm
-T - temperature , K
+`T` - temperature , K
 
 # Returns
 ``( ∫α1⋅g(λ,T)dλ1 / ∫f(α2)g(λ,T)dλ2 , 
@@ -743,34 +914,36 @@ T - temperature , K
    d²/dT² [ ∫α1⋅g(λ,T)dλ1/∫α2⋅g(λ,T)dλ2 ]
 )``
 """
-function Dₜweighted_values_ratio(
+function Dₜplanck_weighted_ratio(
                         α1::AbstractVector{Q}, 
                         λ1::AbstractVector{L},
                         α2::AbstractVector{Q}, 
                         λ2::AbstractVector{L},
                         T::D ) where { D <: Number , Q <: Number , L <: Number}
 
-    (f1 , df1 , d2f1 ) = Dₜweighted_value(α1 , λ1 , T)
-    (f2 , df2 , d2f2 ) = Dₜweighted_value(α2 , λ2 , T)
+    (f1 , df1 , d2f1 ) = Dₜplanck_weighted(α1 , λ1 , T)
+    (f2 , df2 , d2f2 ) = Dₜplanck_weighted(α2 , λ2 , T)
+
     return    return (    
                 f1/f2 ,
-                (df1 * f2 - df2 * f1 )/f2^2 , 
+                _spectral_ratio_first_derivative(f1 , df1 , f2 , df2) , 
                 _spectral_ratio_second_derivative(f1, df1, d2f1,
                                                             f2, df2, d2f2)
         )
 
 end
 """
-    Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
+    Dₜplanck_weighted_values(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
 
 Evaluates the integral of `e(λ)` over three weighting functions of 
-Planck's function and its first and second derivaitve: `ibb`, `∇ₜibb` и `∇²ₜibb`
+Planck's function ,  its first- and second- derivaitve: 
+`ibb`, `∇ₜibb` и `∇²ₜibb`
 
 Returns six-elements tuple (integrals and normalizers) :
 `( ∫α(λ)ibb(λ,T)dλ , ∫α(λ)∇ₜibb(λ,T)dλ , ∫α(λ)∇²ₜibb(λ,T)dλ , 
    ∫ibb(λ,T)dλ , ∫∇ₜibb(λ,T)dλ , ∫∇²ₜibb(λ,T)dλ)`
 """
-function Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
+function Dₜplanck_weighted_values(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
     N = length(e)
     @assert length(λ) == N
 
@@ -796,7 +969,6 @@ function Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, 
     g2_start *= nrm2
     g3_start *= nrm3
 
-    
     inv2 = inv(DD(2))
     inv3 = inv(DD(3))
     inv4 = inv(DD(4))
@@ -851,16 +1023,6 @@ function Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, 
         c4_3 = (a2_3 * b2 + a3_3 * b1) * inv3
         c5_3 = a3_3 * b2 * inv4
 
-        # Horner's scheme (explicit)
-        #=s1  += h * (c2_1 + h * (c3_1 + h * (c4_1 + h * c5_1)))
-        sn1 += h * (a1_1 + h * (a2_1 * inv2 + h * (a3_1 * inv3)))
-
-        s2  += h * (c2_2 + h * (c3_2 + h * (c4_2 + h * c5_2)))
-        sn2 += h * (a1_2 + h * (a2_2 * inv2 + h * (a3_2 * inv3)))
-
-        s3  += h * (c2_3 + h * (c3_3 + h * (c4_3 + h * c5_3)))
-        sn3 += h * (a1_3 + h * (a2_3 * inv2 + h * (a3_3 * inv3)))=#
-
         s1  += @evalpoly(h, zero(DD), c2_1, c3_1, c4_1, c5_1)
         sn1 += @evalpoly(h, zero(DD), a1_1, a2_1 * inv2, a3_1 * inv3)
         s2  += @evalpoly(h, zero(DD), c2_2, c3_2, c4_2, c5_2)
@@ -874,6 +1036,109 @@ function Dₜplanck_weighted_value(e::AbstractVector{Q}, λ::AbstractVector{L}, 
         sn1 * norm_val1, sn2 * norm_val2, sn3 * norm_val3
     )
 end
+
+"""
+    Dₜplanck_weighted(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
+
+Evaluates the integral of `e(λ)` over three weighting functions of 
+Planck's function ,  its first- and second- derivaitve: 
+`ibb`, `∇ₜibb` и `∇²ₜibb`
+
+Returns six-elements tuple (integrals and normalizers) :
+`( ∫α(λ)ibb(λ,T)dλ , ∫α(λ)∇ₜibb(λ,T)dλ , ∫α(λ)∇²ₜibb(λ,T)dλ)`
+"""
+function Dₜplanck_weighted(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
+    N = length(e)
+    @assert length(λ) == N
+
+    DD = promote_type(Q, D, L)
+
+    # starting summations
+    s1 = zero(DD) #  ibb
+    s2 = zero(DD) #  ∇ₜibb
+    s3 = zero(DD) #  ∇²ₜibb
+
+    # normalizators 
+    (lmin, lmax) = extrema(λ)
+    (_, norm_val1) = maximum_on_interval(ibb, lmin, lmax, T)    
+    (_, norm_val2) = maximum_on_interval(∇ₜibb, lmin, lmax, T)    
+    (_, norm_val3) = maximum_on_interval(∇²ₜibb, lmin, lmax, T)    
+
+    nrm1 = inv(norm_val1)
+    nrm2 = inv(norm_val2)
+    nrm3 = inv(norm_val3)
+
+    (g1_start , g2_start  , g3_start) = Dₜibb(λ[begin], T) 
+
+    g1_start *= nrm1
+    g2_start *= nrm2
+    g3_start *= nrm3
+
+    inv2 = inv(DD(2))
+    inv3 = inv(DD(3))
+    inv4 = inv(DD(4))
+
+    @inbounds for i in 1:N-1
+        lstart = λ[i]
+        lend = λ[i + 1]
+        
+        h = lend - lstart
+        h_half = h * inv2
+
+        # e approximaiton coefficients 
+        b1 = DD(e[i])
+        b2 = (DD(e[i+1]) - b1) / h
+
+        # functions values 
+        (g1_end , g2_end , g3_end) = Dₜibb(lend , T)
+
+        g1_end *= nrm1
+        g2_end *= nrm2
+        g3_end *= nrm3
+
+        g1_centre , g2_centre , g3_centre =  Dₜibb(lstart + h_half , T)
+        g1_centre *= nrm1
+        g2_centre *= nrm2
+        g3_centre *= nrm3
+        
+        # hardcoded polyfit
+        (a1_1, a2_1, a3_1) = second_order_polynomial_fit(zero(D), h_half, h, g1_start, g1_centre, g1_end)
+        (a1_2, a2_2, a3_2) = second_order_polynomial_fit(zero(D), h_half, h, g2_start, g2_centre, g2_end)
+        (a1_3, a2_3, a3_3) = second_order_polynomial_fit(zero(D), h_half, h, g3_start, g3_centre, g3_end)
+
+        # returns back 
+        g1_start = g1_end                                        
+        g2_start = g2_end                                        
+        g3_start = g3_end                                        
+
+        # ibb
+        c2_1 = a1_1 * b1
+        c3_1 = (a1_1 * b2 + a2_1 * b1) * inv2
+        c4_1 = (a2_1 * b2 + a3_1 * b1) * inv3
+        c5_1 = a3_1 * b2 * inv4
+
+        # ∇ₜibb
+        c2_2 = a1_2 * b1
+        c3_2 = (a1_2 * b2 + a2_2 * b1) * inv2
+        c4_2 = (a2_2 * b2 + a3_2 * b1) * inv3
+        c5_2 = a3_2 * b2 * inv4
+
+        # ∇²ₜibb
+        c2_3 = a1_3 * b1
+        c3_3 = (a1_3 * b2 + a2_3 * b1) * inv2
+        c4_3 = (a2_3 * b2 + a3_3 * b1) * inv3
+        c5_3 = a3_3 * b2 * inv4
+
+        s1  += @evalpoly(h, zero(DD), c2_1, c3_1, c4_1, c5_1)
+        s2  += @evalpoly(h, zero(DD), c2_2, c3_2, c4_2, c5_2)
+        s3  += @evalpoly(h, zero(DD), c2_3, c3_3, c4_3, c5_3)
+    end 
+    
+    return (
+        s1 * norm_val1, s2 * norm_val2, s3 * norm_val3
+    )
+end
+
 
 function maximum_on_interval(g::Dfunctions , lmin , lmax , T)
     λmax = λₘ(g , T) # selected function maximum value   
@@ -1206,7 +1471,7 @@ Calculates tuple of (`Ibb,dIbb/dT,d²Ibb/dT²`) calculated according to:
         """
         band_power(T;λₗ=0.0 , λᵣ=Inf , tol=1e-8)
 
-Total bb with temperature T integral intensity within (in-band radiance), [W/(m²⋅sr)]
+Total bb with temperature T integral intensity (`∫ibb(λ , T)dλ`) within (in-band radiance), [W/(m²⋅sr)]
 the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
 tol - tolerance of intehration
 
@@ -1404,7 +1669,7 @@ integral intensity derivative (analytic) of bb intensity fraction
 in the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
 
 # Arguments:
-T - temperature,Kelvins
+`T` - temperature,Kelvins
 (optional)
 `λₗ` - left wavelength boundary, μm
 `λᵣ` - right wavelength boundary, μm
@@ -1437,31 +1702,31 @@ in the spectral range `λₗ...λᵣ` (by default the range is 0...inf)
 `λₗ` - left wavelength boundary, μm
 `λᵣ` - right wavelength boundary, μm
     """
-    function ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf )
-        @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
-        if λₗ > λᵣ
-            (λₗ, λᵣ) = (λᵣ, λₗ)
-        end
-
-        xₗ = (λₗ == 0.0 || !isfinite(λₗ)) ? 0.0 : C₂ / (λₗ * T)
-        xᵣ = (λᵣ == 0.0 || !isfinite(λᵣ)) ? 0.0 : C₂ / (λᵣ * T)
-
-        termₗ = 0.0
-        if xₗ > 0.0
-            expm1_xₗ = expm1(xₗ)
-            if isfinite(expm1_xₗ)
-                termₗ = (xₗ^4 / expm1_xₗ) * (xₗ * exp(xₗ) / expm1_xₗ - 5.0)
-            end
-        end
-        termᵣ = 0.0
-        if xᵣ > 0.0
-            expm1_xᵣ = expm1(xᵣ)
-            if isfinite(expm1_xᵣ)
-                termᵣ = (xᵣ^4 / expm1_xᵣ) * (xᵣ * exp(xᵣ) / expm1_xᵣ - 5.0)
-            end
-        end
-        return (15.0 / (pi^4 * T^2)) * (termᵣ - termₗ)
+function ∇²ₜ∫ibbₗ(T; λₗ=0.0, λᵣ=Inf )
+    @assert λₗ != λᵣ "Bounding wavelengths must not be equal"
+    if λₗ > λᵣ
+        (λₗ, λᵣ) = (λᵣ, λₗ)
     end
+
+    xₗ = (λₗ == 0.0 || !isfinite(λₗ)) ? 0.0 : C₂ / (λₗ * T)
+    xᵣ = (λᵣ == 0.0 || !isfinite(λᵣ)) ? 0.0 : C₂ / (λᵣ * T)
+
+    termₗ = 0.0
+    if xₗ > 0.0
+        expm1_xₗ = expm1(xₗ)
+        if isfinite(expm1_xₗ)
+            termₗ = (xₗ^4 / expm1_xₗ) * (xₗ * exp(xₗ) / expm1_xₗ - 5.0)
+        end
+    end
+    termᵣ = 0.0
+    if xᵣ > 0.0
+        expm1_xᵣ = expm1(xᵣ)
+        if isfinite(expm1_xᵣ)
+            termᵣ = (xᵣ^4 / expm1_xᵣ) * (xᵣ * exp(xᵣ) / expm1_xᵣ - 5.0)
+        end
+    end
+    return (15.0 / (pi^4 * T^2)) * (termᵣ - termₗ)
+end
         """
         attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector;  tol=1e-6)
 
@@ -1474,10 +1739,9 @@ accounting for the spectral transmittance profile `τ(λ)`.
 `τ` - transmittance
 `λ` - wavelength , μm
     """
-    function attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector;  tol=1e-6)
+    function attenuated_band_power(T, τ::AbstractVector, λ::AbstractVector)
         @assert length(λ) == length(τ) "Vectors λ and τ must have the same length"    
-        τ_avg = weighted_average(τ , λ , T , ibb , identity)
-        return  τ_avg * band_power(T; λₗ=λ[begin], λᵣ=λ[end], tol=tol)
+        return  planck_weighted(τ , λ , T)
     end
 """
     units(f::Function)
@@ -1517,74 +1781,69 @@ returns units string of output quantity  return
     @inline fourth_order_polynomial_eval(a1, a2, a3, a4, a5, x) = @evalpoly(x, a1, a2, a3, a4, a5)
 
         """
-    spectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+    spectral_ratio(λ1::Number, λ2::Number, T::Number)
 
-Calculate the theoretical intensity ratio `R = e_slope * ( Ibb1/Ibb2)`
-between two wavelengths `λ1` and `λ2` at temperature `T`, accounting for the spectral 
-emissivities `e_slope = ε1/ε2`.
+Calculate the theoretical intensity ratio `R =  ( Ibb1/Ibb2)`
+between two wavelengths `λ1` and `λ2` at temperature `T`
 
 # Arguments
 `λ1`- First wavelength (usually the shorter one), in μm.
 `λ2`- Second wavelength (usually the longer one), in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
 
 """
-spectral_ratio(λ1::Number, λ2::Number, T::Number;  e_slope::Number=1.0) = e_slope *  ibb(λ1 , T) /ibb(λ2 , T)
+spectral_ratio(λ1::Number, λ2::Number, T::Number) = ibb(λ1 , T) /ibb(λ2 , T)
 
 """
-    spectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    spectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;   tol = 1e-6) where TL <: Number
 
 The same as spectral_ratio, but now the band can be wide (not a single wavelength).
-This may be useful for two-color pyrometers when their working regions width cannot be ignored 
+This function may be useful for two-color pyrometers in case when their working regions 
+width cannot be ignored 
 
 # Arguments
 `λ1`- tuple of left and right wavelength of the first band, in μm.
 `λ2`- tuple of left and right wavelength of the second band, in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
 
 """
-function spectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
-   return e_slope *  band_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol) / band_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
+function spectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;   tol = 1e-6) where TL <: Number
+   return band_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol) / band_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
 end
 """
-    ∇ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+    ∇ₜspectral_ratio(λ1::Number, λ2::Number, T::Number)
 
-Calculate the theoretical intensity ratio derivative `dR/T =d/dT ( e_slope * ( Ibb1/Ibb2))`
-between two wavelengths `λ1` and `λ2` at temperature `T`, accounting for the spectral 
-emissivities `e_slope = ε1/ε2`.
+Calculate the theoretical intensity ratio derivative `dR/T =d/dT (  Ibb1/Ibb2 )`
+between two wavelengths `λ1` and `λ2` at temperature `T`
 
 # Arguments
 `λ1`- First wavelength (usually the shorter one), in μm.
 `λ2`- Second wavelength (usually the longer one), in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0).
 """
-function ∇ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+function ∇ₜspectral_ratio(λ1::Number, λ2::Number, T::Number)
     (i1, di1 , _) = Dₜibb(λ1 , T)
     (i2, di2 , _) = Dₜibb(λ2 , T)
-    return e_slope * (di1 * i2 - di2 * i1 )/i2^2
+    return _spectral_ratio_first_derivative(i1 , di1 , i2 , di2)
 end
 
 """
-    ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;   tol = 1e-6) where TL <: Number
 
-    First derivative of two wide spectral band ratio 
+    First derivative of two wide spectral band ratio
 
 # Arguments
 `λ1`- tuple of left and right wavelength of the first band, in μm.
 `λ2`- tuple of left and right wavelength of the second band, in μm.
-`T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
+`T`- Absolute temperature, in K
 """
-function ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+function ∇ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;   tol = 1e-6) where TL <: Number
     (i1, di1 , _) = Dₜband_power(T ; λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
     (i2, di2 , _) = Dₜband_power(T ; λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
-    return e_slope * (di1 * i2 - di2 * i1 )/i2^2
+    return _spectral_ratio_first_derivative(i1 , di1 , i2 , di2)
 end
 """
-    ∇²ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+    ∇²ₜspectral_ratio(λ1::Number, λ2::Number, T::Number)
 
 Spectral ratio second derivative
 
@@ -1592,18 +1851,17 @@ Spectral ratio second derivative
 `λ1`- First wavelength (usually the shorter one), in μm.
 `λ2`- Second wavelength (usually the longer one), in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0).
 """
-function ∇²ₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+function ∇²ₜspectral_ratio(λ1::Number, λ2::Number, T::Number)
     (i1, di1 , d2i1) = Dₜibb(λ1 , T)
     (i2, di2 , d2i2) = Dₜibb(λ2 , T)
-    return e_slope * _spectral_ratio_second_derivative(
+    return _spectral_ratio_second_derivative(
                 i1, di1, d2i1,
                 i2, di2, d2i2
     )
 end
 """
-    ∇²ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    ∇²ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  tol = 1e-6) where TL <: Number
 
 Spectral band ratio second derivative
 
@@ -1611,18 +1869,17 @@ Spectral band ratio second derivative
 `λ1`- tuple of left and right wavelength of the first band, in μm.
 `λ2`- tuple of left and right wavelength of the second band, in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
 """
-function ∇²ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+function ∇²ₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  tol = 1e-6) where TL <: Number
     (i1, di1 , d2i1) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , tol = tol)
     (i2, di2 , d2i2) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , tol = tol)
-    return e_slope * _spectral_ratio_second_derivative(
+    return  _spectral_ratio_second_derivative(
                 i1, di1, d2i1,
                 i2, di2, d2i2
     )
 end
 """
-    Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
+    Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number)
 
 All spectral ratio derivatives in one tuple
 
@@ -1630,34 +1887,29 @@ All spectral ratio derivatives in one tuple
 `λ1`- First wavelength (usually the shorter one), in μm.
 `λ2`- Second wavelength (usually the longer one), in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0).
 
 """
-function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number; e_slope::Number=1.0)
-
+function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number)
     (i1, di1 , d2i1) = Dₜibb(λ1 , T)
     (i2, di2 , d2i2) = Dₜibb(λ2 , T)
-
     return (    
-                e_slope * i1/i2 ,
-                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
-                e_slope * _spectral_ratio_second_derivative(i1, di1, d2i1,
+                 i1/i2 ,
+                 _spectral_ratio_first_derivative(i1 , di1 , i2 , di2), 
+                 _spectral_ratio_second_derivative(i1, di1, d2i1,
                                                             i2, di2, d2i2)
             )
 end
-function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number , skip_second_derivative::Val{true}; e_slope::Number=1.0)
-
+function Dₜspectral_ratio(λ1::Number, λ2::Number, T::Number , skip_second_derivative::Val{true})
     (i1, di1 , _) = Dₜibb(λ1 , T , skip_second_derivative)
     (i2, di2 , _) = Dₜibb(λ2 , T , skip_second_derivative)
-
     return (    
-                e_slope * i1/i2 ,
-                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+                i1/i2 ,
+                _spectral_ratio_first_derivative(i1 , di1 , i2 , di2), 
                nothing
             )
 end
 """
-    Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  tol = 1e-6) where TL <: Number
 
 All spectral band ratio derivatives are in one tuple
 
@@ -1666,37 +1918,43 @@ All spectral band ratio derivatives are in one tuple
 `λ1`- tuple of left and right wavelength of the first band, in μm.
 `λ2`- tuple of left and right wavelength of the second band, in μm.
 `T`- Absolute temperature, in K.
-`e_slope`- Spectral emissivity at `λ1` to `λ2` ratio (default: 1.0)
 """
-function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  tol = 1e-6) where TL <: Number
 
     (i1, di1 , d2i1) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] ; tol = tol)
     (i2, di2 , d2i2) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] ; tol = tol)
 
     return (    
-                e_slope * i1/i2 ,
-                e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
-                e_slope * _spectral_ratio_second_derivative(i1, di1, d2i1,
+                i1/i2 ,
+                _spectral_ratio_first_derivative(i1 , di1 , i2 , di2) , 
+                _spectral_ratio_second_derivative(i1, di1, d2i1,
                                                             i2, di2, d2i2)
         )
 end
     """
-        Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+        Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  tol = 1e-6) where TL <: Number
 
     Ignores the second derivative evaluation 
     """
-    function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};  e_slope::Number=1.0 , tol = 1e-6) where TL <: Number
+    function Dₜspectral_band_ratio(λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number , skip_second_derivative::Val{true};   tol = 1e-6) where TL <: Number
 
         (i1, di1 , _) = Dₜband_power(T, λₗ = λ1[1] , λᵣ = λ1[2] , skip_second_derivative; tol = tol)
         (i2, di2 , _) = Dₜband_power(T, λₗ = λ2[1] , λᵣ = λ2[2] , skip_second_derivative; tol = tol)
 
         return (    
-                    e_slope * i1/i2 ,
-                    e_slope * (di1 * i2 - di2 * i1 )/i2^2 , 
+                    i1/i2 ,
+                    _spectral_ratio_first_derivative(i1 , di1 , i2 , di2),
                     nothing
             )
     end
-    @inline function _spectral_ratio_second_derivative(
+    @inline """
+    _spectral_ratio_second_derivative(
+                    I1::Number, dI1_dT::Number, d2I1_dT2::Number,
+                    I2::Number, dI2_dT::Number, d2I2_dT2::Number
+        )
+
+"""
+function _spectral_ratio_second_derivative(
                     I1::Number, dI1_dT::Number, d2I1_dT2::Number,
                     I2::Number, dI2_dT::Number, d2I2_dT2::Number
         )
@@ -1710,13 +1968,15 @@ end
                     
         return numerator * inv_I2_cub
     end
-
+    @inline function _spectral_ratio_first_derivative(f1 , df1 , f2 , df2)
+        return (df1 * f2 - df2 * f1 )/f2^2
+    end
     ∇ₗ(::typeof(ibb)) = ∇ₗibb
     ∇ₗ(::typeof(∇ₗibb)) = ∇²ₗibb
     ∇²ₗ(::typeof(ibb)) = ∇²ₗibb
     # generating operators 
-    for f in (:ibb, :band_power, :power, :spectral_ratio , :spectral_band_ratio)
-        f_orig  = Symbol(f)          #  :ibb
+    for f in (:ibb, :band_power, :power, :spectral_ratio , :spectral_band_ratio , :planck_weighted , :planck_weighted_ratio)
+        f_orig  = Symbol(f)         #  :ibb
         f_deriv = Symbol("∇ₜ", f)    #  :∇ₜibb
         f_sec   = Symbol("∇²ₜ", f)   #  :∇²ₜibb
         @eval begin
@@ -1738,11 +1998,23 @@ end
         l::LT
         a::AT
     end
-    (w::WeightedIntegrator)(t::Number) = first(weighted_value(w.a , w.l , t , w.f , identity ))
+    (w::WeightedIntegrator)(t::Number) = weighted(w.a , w.l , t , w.f , identity )
     (b::BandIntegrator{typeof(ibb)})(T::Number) =   band_power(T , λₗ = b.l1 , λᵣ = b.l2)
+
+    ∇ₜ(b::BandIntegrator{typeof(ibb)}) = BandIntegrator{typeof(∇ₜibb)}(b.l1 , b.l2)
+    ∇²ₜ(b::BandIntegrator{typeof(ibb)}) = BandIntegrator{typeof(∇²ₜibb)}(b.l1 , b.l2)
+    ∇ₜ(b::BandIntegrator{typeof(∇ₜibb)}) = BandIntegrator{typeof(∇²ₜibb)}(b.l1 , b.l2)
+
     (b::BandIntegrator{typeof(∇ₜibb)})(T::Number) =  ∇ₜband_power(T , λₗ = b.l1 , λᵣ = b.l2)
     (b::BandIntegrator{typeof(∇²ₜibb)})(T::Number) =   ∇²ₜband_power(T , λₗ = b.l1 , λᵣ = b.l2)
+    struct RatioIntegrator{B1, B2}
+        num::B1
+        den::B2
+    end
+   /(int1::BandIntegrator, int2::BandIntegrator) = RatioIntegrator(int1, int2)
+   /(int1::WeightedIntegrator, int2::WeightedIntegrator) = RatioIntegrator(int1, int2)
 
+    (r::RatioIntegrator)(T::Number) = r.num(T) / r.den(T)
     """
     ∫ₗ(f::F , λ₁::Number, λ₂::Number) where F <: $(Dfunctions)
 
@@ -1754,19 +2026,20 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
 """
     ∫ₗ(::F, λ₁::Number, λ₂::Number) where F <: Dfunctions = BandIntegrator{F}(λ₁ , λ₂)
     ∫ₗ(g::Dfunctions , λ::AbstractVector , α::AbstractVector) =WeightedIntegrator( g , λ , α )
- weighted_value(e , l , t , ::typeof(Dₜibb)) = Dₜweighted_value(e , l , t)
     """
         ∇ₜ(f) 
 
         Differentiation operator returns the derivatives function for the input function 
     [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
-    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref) , 
+    [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
     and their derivatives e.g [`∇ₜband_power`](@ref) etc.
 
     # Examples
     ```julia
     ∇ₜ(ibb)        # -> ∇ₜibb
-    (∇ₜ∘∇ₜ)(ibb)   # ->  ∇²ₜspectral_band_ratio
+    F = (∇ₜ∘∇ₜ)(spectral_band_ratio)   #  ->  ∇²ₜspectral_band_ratio
+    F(1253.5) # returns the second derivative with respect to temperature of the ratio of two spectral band at temperature 1253.5 K
     ```
     """
     function ∇ₜ end
@@ -1784,9 +2057,61 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
     ```
     """  
     function ∇²ₜ end        
+    """
+    ∫ₗ(g)
+    ∫ₗ(g, λ₁, λ₂)
+    ∫ₗ(g, λ::AbstractVector, α::AbstractVector)
 
+The spectral integration operator for Planck radiation quantities.
+
+Depending on the provided argument signature, this operator returns different 
+highly optimized, type-stable callable objects (functors) designed to minimize 
+runtime allocations.
+
+# Arguments
+* `g::Dfunctions`: The base Planck function layer (`ibb`, `∇ₜibb`, `∇²ₜibb`, or `Dₜibb`).
+* `λ₁`, `λ₂::Number`: Spectral band boundaries in microns (μm).
+* `λ::AbstractVector`, `α::AbstractVector`: Discrete experimental data arrays (wavelength grid and spectral coefficients).
+
+---
+### Full Spectrum Integration (Unary)
+When applied directly to a single argument, it returns a functor representing the analytical total integrated power over the entire spectrum ([0, ∞)) governed by the Stefan-Boltzmann law.
+```julia
+f = ∫ₗ ibb
+f(1273.5) # Returns σ * T^4
+```
+
+---
+
+### Spectral Band Integration
+When given a function and two numeric boundaries, it returns a functor that evaluates the integrated band power within the specific interval `[λ₁, λ₂]`.
+```julia
+f = ∫ₗ(ibb, 2.3, 4.5)
+f(1273.5) # Returns integrated power between 2.3 and 4.5 μm
+```
+
+---
+### Tabular Data Integration
+When given a function and two matching discrete arrays, it returns a functor designed for experimental data pyrometry (e.g., integrating a wavelength-dependent emissivity vector `α` against the Planck distribution).
+```julia
+f = ∫ₗ(ibb, λ_grid, e_data)
+f(1273.5) # Returns the discrete Planck-weighted integral 
+```
+"""
+function ∫ₗ end        
     include("_chain_rules.jl")
     function symbolize end
     export symbolize
 
 end
+
+
+# Horner's scheme (explicit)
+#=s1  += h * (c2_1 + h * (c3_1 + h * (c4_1 + h * c5_1)))
+sn1 += h * (a1_1 + h * (a2_1 * inv2 + h * (a3_1 * inv3)))
+
+s2  += h * (c2_2 + h * (c3_2 + h * (c4_2 + h * c5_2)))
+sn2 += h * (a1_2 + h * (a2_2 * inv2 + h * (a3_2 * inv3)))
+
+s3  += h * (c2_3 + h * (c3_3 + h * (c4_3 + h * c5_3)))
+sn3 += h * (a1_3 + h * (a2_3 * inv2 + h * (a3_3 * inv3)))=#

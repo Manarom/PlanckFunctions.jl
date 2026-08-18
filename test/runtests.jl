@@ -133,8 +133,8 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
                 (nt , 1.0), PF.band_power , T ; λₗ = 1.0 , λᵣ=6.0
             ))
 
-            @test all((PF.spectral_ratio(1.0 , 6.0 , T , e_slope = 1.05) , PF.∇ₜspectral_ratio(1.0 , 6.0 , T, e_slope = 1.05)) .≈ ChainRulesCore.frule(
-                (nt , nt , nt ,  1.0), PF.spectral_ratio ,1.0 , 6.0 ,  T ; e_slope = 1.05
+            @test all((PF.spectral_ratio(1.0 , 6.0 , T ) , PF.∇ₜspectral_ratio(1.0 , 6.0 , T)) .≈ ChainRulesCore.frule(
+                (nt , nt , nt ,  1.0), PF.spectral_ratio ,1.0 , 6.0 ,  T 
             ))
 
         println("ok")
@@ -165,7 +165,7 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
                  
                 @test actual ≈ expected atol = 1e-5
 
-                tpl =   PF.Dₜweighted_value(α, λ, T) 
+                tpl =   PF.Dₜplanck_weighted(α, λ, T) 
                 num_integral_direct, _ = quadgk(l -> l * g(l, T), λ[begin], λ[end], rtol=1e-14)
                 @test tpl[i] ≈ num_integral_direct atol = 1e-5
 
@@ -181,7 +181,7 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
             #dfdx(f,x) = ForwardDiff.derivative(f,x)
             #d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
             D_FD= (f_weighted_ratio(T) , dfdx(f_weighted_ratio,T) , d2fdx2(f_weighted_ratio , T))
-            D_PF = PF.Dₜweighted_values_ratio(a1 , l1 , a2 , l2 , T )
+            D_PF = PF.Dₜplanck_weighted_ratio(a1 , l1 , a2 , l2 , T )
             @test all( (≈).(D_FD , D_PF , rtol =1e-4) )
         println("ok")
 

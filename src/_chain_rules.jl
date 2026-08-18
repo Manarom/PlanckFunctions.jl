@@ -53,9 +53,9 @@ Forward-mode AD rule for `band_power`.
 function ChainRulesCore.frule( (_ , _ , _ , ΔT), 
                         ::typeof(spectral_ratio),
                         λ1::Number ,  λ2::Number ,
-                        T::Number; e_slope::Number = 1.0)
+                        T::Number)
 
-    (val , dR, _) = Dₜspectral_ratio(λ1 , λ2 , T , Val(true); e_slope = e_slope)
+    (val , dR, _) = Dₜspectral_ratio(λ1 , λ2 , T , Val(true))
 
     ∂val = ZeroTangent()
     
@@ -67,7 +67,7 @@ function ChainRulesCore.frule( (_ , _ , _ , ΔT),
     return val, ∂val
 end
 
-# spectral_band_ratio  # (λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  e_slope::Number=1.0 , tol = 1e-6)
+# spectral_band_ratio  # (λ1::NTuple{2, TL}, λ2::NTuple{2,TL}, T::Number;  tol = 1e-6)
 """
     rrule(::typeof(ibb), λ::Number, T::Number)
 

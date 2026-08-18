@@ -133,19 +133,26 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
                 (nt , 1.0), PF.band_power , T ; λₗ = 1.0 , λᵣ=6.0
             ))
 
-            @test all((PF.spectral_ratio(1.0 , 6.0 , T , e_slope = 1.05) , PF.∇ₜspectral_ratio(1.0 , 6.0 , T, e_slope = 1.05)) .≈ ChainRulesCore.frule(
-                (nt , nt , nt ,  1.0), PF.spectral_ratio ,1.0 , 6.0 ,  T ; e_slope = 1.05
+            @test all((PF.spectral_ratio(1.0 , 6.0 , T ) , PF.∇ₜspectral_ratio(1.0 , 6.0 , T)) .≈ ChainRulesCore.frule(
+                (nt , nt , nt ,  1.0), PF.spectral_ratio ,1.0 , 6.0 ,  T 
             ))
 
         println("ok")
 
         print("testing weighted average function ...")
-            λ = collect(range(0.8, 2.5, length=500))
+            λ = collect(range(0.8, 2.5, length=1000))
             α = copy(λ)
             
             f_test = inv
 
-            for g in (PF.ibb , PF.∇ₜibb , PF.∇²ₜibb)
+            f1 = @. (λ >= 0.9) & (λ <= 1.1)
+            f2 = @. (λ >= 1.9) & (λ <= 2.1)
+            l1 = @view λ[f1]
+            a1 = @view α[f1]
+            l2 = @view λ[f2]
+            a2 = @view α[f2]
+
+            for (i , g) in enumerate((PF.ibb , PF.∇ₜibb , PF.∇²ₜibb))
                 
                 # numerator numeric evaluation 
                 num_integral, _ = quadgk(l -> f_test(l) * g(l, T), λ[begin], λ[end], rtol=1e-14)
@@ -155,10 +162,27 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
                 expected = num_integral / den_integral # numeric value of averaged 
                                     
                 actual = PF.weighted_average(α, λ, T, g , f_test)
-
+                 
                 @test actual ≈ expected atol = 1e-5
 
+                tpl =   PF.Dₜplanck_weighted(α, λ, T) 
+                num_integral_direct, _ = quadgk(l -> l * g(l, T), λ[begin], λ[end], rtol=1e-14)
+                @test tpl[i] ≈ num_integral_direct atol = 1e-5
+
+                # extracting wavelengths regions 
+
+                num_integral1, _ = quadgk(l -> f_test(l) * g(l, T), l1[begin], l1[end], rtol=1e-14)
+                num_integral2, _ = quadgk(l -> f_test(l) * g(l, T), l2[begin], l2[end], rtol=1e-14)
+                rat_num = num_integral1/num_integral2
+                ratio_pf = PF.weighted_values_ratio(a1 , l1 , a2 , l2 , T , g , f_test)
+                @test rat_num ≈ ratio_pf rtol = 1e-4
             end
+            f_weighted_ratio = t-> PF.weighted_values_ratio(a1 , l1 , a2 , l2 , t , PF.ibb)
+            #dfdx(f,x) = ForwardDiff.derivative(f,x)
+            #d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
+            D_FD= (f_weighted_ratio(T) , dfdx(f_weighted_ratio,T) , d2fdx2(f_weighted_ratio , T))
+            D_PF = PF.Dₜplanck_weighted_ratio(a1 , l1 , a2 , l2 , T )
+            @test all( (≈).(D_FD , D_PF , rtol =1e-4) )
         println("ok")
 
         print("testing based on externally provided data ... ") 

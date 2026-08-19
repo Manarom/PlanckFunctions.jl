@@ -17,9 +17,8 @@ and temperature (T), optimized for high-performance physics and pyrometry calcul
 * **Combined Evaluation**: 
   Functions prefixed with `Dₜ` (e.g., `Dₜfoo`) evaluate the base value, the first derivative, and the second derivative simultaneously, returning them as a single `Tuple` to prevent redundant calculations.
 * **Functional Operators**: 
-  The symbols `∇ₜ` and `∇²ₜ` can be used directly as operators on functions, mapping a base function to its corresponding derivative function (e.g., `PlanckFunctions.∇ₜ(PlanckFunctions.ibb) -> ∇ₜibb`).
-  The symbol `∫ₗ` applied on function mapps it to its wavelength integrator , e.g. 
-    
+  The symbols `∇ₜ` ,`Dₜ` and `∇²ₜ` can be used directly as operators on functions, mapping a base function to its corresponding derivative function (e.g., `PlanckFunctions.∇ₜ(PlanckFunctions.ibb) -> ∇ₜibb`).
+  The symbol `∫ₗ` applied on function maps it to its wavelength integrator 
     
 
 ### Physical Units
@@ -62,6 +61,11 @@ or by applying the [`∫ₗ`](@ref) [`∫ₗ`](@ref) operator
 #### Discrete/Tabular Integration (Experimental Data Pyrometry)
 * [`planck_weighted`](@ref), [`∇ₜplanck_weighted`](@ref), [`∇²ₜplanck_weighted`](@ref), [`Dₜplanck_weighted`](@ref): Integrates a discrete, wavelength-dependent experimental quantity (such as emissivity or detector response) weighted by the Planck function and its derivatives.
 * [`planck_weighted_ratio`](@ref), [`∇ₜplanck_weighted_ratio`](@ref), [`∇²ₜplanck_weighted_ratio`](@ref), [`Dₜplanck_weighted_ratio`](@ref): Computes the ratio of two independent Planck-weighted discrete quantities and its analytical temperature derivatives.
+
+#### Operators 
+* [`∫ₗ`](@ref) : Integration 
+* [`∇ₜ`](@ref) , [`∇²ₜ`](@ref) : Differentiation
+
 """
 module PlanckFunctions
     using ChainRulesCore
@@ -87,8 +91,11 @@ module PlanckFunctions
             planck_weighted_ratio ,∇ₜplanck_weighted_ratio, ∇²ₜplanck_weighted_ratio,  Dₜplanck_weighted_ratio,
 
             planck_averaged, planck_averaged_attenuation, rosseland_averaged_attenuation,
+
             weighted_average,
-            weighted_value , ∫ₗ , ∇ₜ , ∇²ₜ  
+            weighted_value , ∫ₗ , ∇ₜ , ∇²ₜ   , Dₜ , 
+
+            AbstractSpectralQuantity, AnalyticalSpectralQuantity, IsothermalSpectralQuantity
 
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
@@ -627,6 +634,7 @@ Evaluates the Planck-averaged value of `x(λ)` for temperature `T`:
 E.g. can be used to evaluate the integral  from  spectral emissivity
 """
 planck_averaged(x::AbstractVector, λ::AbstractVector,T::Number) = weighted_average(x , λ , T , ibb , identity)
+
 const Dfunctions = Union{typeof(ibb),typeof(∇ₜibb),typeof(∇²ₜibb)}
 """
     weighted_average(α::AbstractVector, 
@@ -907,12 +915,13 @@ Returns the tuple of the value, first and second derivatives of two weighted val
 `T` - temperature , K
 
 # Returns
-``( ∫α1⋅g(λ,T)dλ1 / ∫f(α2)g(λ,T)dλ2 , 
+`( 
+   ∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2, 
 
-   d/dT [∫α1⋅g(λ,T)dλ1/∫α2⋅g(λ,T)dλ2] , 
+   d/dT [ (∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2) ] , 
 
-   d²/dT² [ ∫α1⋅g(λ,T)dλ1/∫α2⋅g(λ,T)dλ2 ]
-)``
+   d²/dT² [ (∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2) ]
+)`
 """
 function Dₜplanck_weighted_ratio(
                         α1::AbstractVector{Q}, 
@@ -924,7 +933,7 @@ function Dₜplanck_weighted_ratio(
     (f1 , df1 , d2f1 ) = Dₜplanck_weighted(α1 , λ1 , T)
     (f2 , df2 , d2f2 ) = Dₜplanck_weighted(α2 , λ2 , T)
 
-    return    return (    
+    return (    
                 f1/f2 ,
                 _spectral_ratio_first_derivative(f1 , df1 , f2 , df2) , 
                 _spectral_ratio_second_derivative(f1, df1, d2f1,
@@ -1044,7 +1053,7 @@ Evaluates the integral of `e(λ)` over three weighting functions of
 Planck's function ,  its first- and second- derivaitve: 
 `ibb`, `∇ₜibb` и `∇²ₜibb`
 
-Returns six-elements tuple (integrals and normalizers) :
+Returns three-element tuple :
 `( ∫α(λ)ibb(λ,T)dλ , ∫α(λ)∇ₜibb(λ,T)dλ , ∫α(λ)∇²ₜibb(λ,T)dλ)`
 """
 function Dₜplanck_weighted(e::AbstractVector{Q}, λ::AbstractVector{L}, T::D) where {Q <: Number, L <: Number, D <: Number}
@@ -1979,10 +1988,12 @@ function _spectral_ratio_second_derivative(
         f_orig  = Symbol(f)         #  :ibb
         f_deriv = Symbol("∇ₜ", f)    #  :∇ₜibb
         f_sec   = Symbol("∇²ₜ", f)   #  :∇²ₜibb
+        D_f = Symbol("Dₜ", f) 
         @eval begin
             ∇ₜ(::typeof($f_orig)) = $f_deriv
             ∇²ₜ(::typeof($f_orig)) = $f_sec
             ∇ₜ(::typeof($f_deriv)) = $f_sec
+            Dₜ(::typeof($f_orig)) = $D_f
         end
     end
     ∫ₗ(::typeof(ibb)) = power
@@ -1998,7 +2009,7 @@ function _spectral_ratio_second_derivative(
         l::LT
         a::AT
     end
-    (w::WeightedIntegrator)(t::Number) = weighted(w.a , w.l , t , w.f , identity )
+    (w::WeightedIntegrator)(t::Number) = weighted(w.a , w.l , t , w.f  )
     (b::BandIntegrator{typeof(ibb)})(T::Number) =   band_power(T , λₗ = b.l1 , λᵣ = b.l2)
 
     ∇ₜ(b::BandIntegrator{typeof(ibb)}) = BandIntegrator{typeof(∇ₜibb)}(b.l1 , b.l2)
@@ -2035,6 +2046,9 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
     [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
     and their derivatives e.g [`∇ₜband_power`](@ref) etc.
 
+        Must be implemented on user defined [`AbstractSpectralQuatity`](@ref) interface to perform 
+    fast continuous function weighting derivatives evaluation 
+
     # Examples
     ```julia
     ∇ₜ(ibb)        # -> ∇ₜibb
@@ -2046,9 +2060,13 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
       """
         ∇²ₜ(f) 
 
-        Differentiation operator returns the derivatives of function
+        Differentiation operator returns the second derivatives of function
     [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
-    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref) , 
+    [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
+
+        Must be implemented on user defined [`AbstractSpectralQuatity`](@ref) interface to perform 
+    fast continuous function weighting derivatives evaluation 
 
     # Examples
     ```julia
@@ -2056,7 +2074,28 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
      ∇²ₜ(band_power)   # ->  ∇²ₜband_power
     ```
     """  
-    function ∇²ₜ end        
+    function ∇²ₜ end     
+       """
+        Dₜ(f) 
+
+        Differentiation operator returns the tuple of :
+    (value of base function, its first derivative , its second derivative)
+    
+    [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref) , 
+    [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
+
+        Must be implemented on user defined [`AbstractSpectralQuatity`](@ref) interface to perform 
+    fast continuous function weighting derivatives evaluation 
+
+    # Examples
+    ```julia
+     F = Dₜ(ibb)          # -> Dₜibb
+     F(1273.15) == (ibb(1273.15) , ∇ₜibb(1273.15) , ∇²ₜibb(1273.15))
+     Dₜ(planck_weighted)   # ->  Dₜplanck_weighted
+    ```
+    """       
+    function Dₜ end 
     """
     ∫ₗ(g)
     ∫ₗ(g, λ₁, λ₂)
@@ -2103,6 +2142,247 @@ function ∫ₗ end
     function symbolize end
     export symbolize
 
+
+    # continuous function integration interface types 
+        """
+        AbstractSpectralQuantity
+
+    Abstract supertype for wavelength- and temperature-dependent spectral quantities 
+    (e.g., spectral emissivity `ε(λ, T)` or custom detector responses).
+
+    Any concrete subtype acts as a functional core for radiation physics. When the 
+    `QuadGK` package extension is active.
+
+    # Interface Requirements
+    To fully conform to the `AbstractSpectralQuantity` interface, a subtype `Q` must implement:
+    1. **Functor evaluation**: `(q::Q)(λ, T)` -> returns the base scalar value at wavelength `λ` and temperature `T`.
+    2. **Derivative extraction**: `PlanckFunctions.eval_Dₜ(q::Q, λ, T)` -> returns a `Tuple` of exact values: `(val, ∇ₜval, ∇²ₜval)`.
+
+    See also: [`AnalyticalSpectralQuantity`](@ref), [`DₜAbstractSpectralQuantityWrapper`](@ref).
+    """
+    abstract type  AbstractSpectralQuantity end
+    """
+        AnalyticalSpectralQuantity(f, df, ddf)
+
+    A concrete implementation of [`AbstractSpectralQuantity`](@ref) where the user 
+    explicitly provides exact analytical formulas for the base function and its 
+    first two temperature derivatives.
+
+    # Fields
+    * `f`: Base spectral function of the form `f(λ, T)`.
+    * `df`: Exact analytical first temperature derivative of the form `df(λ, T)` (i.e., `∂f/∂T`).
+    * `ddf`: Exact analytical second temperature derivative of the form `ddf(λ, T)` (i.e., `∂²f/∂T²`).
+
+    # Example
+    ```julia
+    using PlanckFunctions
+
+    # Define a material with a linearly temperature-dependent emissivity
+    ε(λ, T)   = 0.7 + 0.05 * λ + 1.2e-4 * T
+    dε(λ, T)  = 1.2e-4
+    ddε(λ, T) = 0.0
+
+    # Wrap into the analytical interface
+    quantity = AnalyticalSpectralQuantity(ε, dε, ddε)
+    ```
+    """
+    struct AnalyticalSpectralQuantity{F, F1, F2} <: AbstractSpectralQuantity
+        f::F
+        df::F1
+        ddf::F2
+    end
+        """
+        IsothermalSpectralQuantity(f)
+
+    A concrete implementation of [`AbstractSpectralQuantity`](@ref) for spectral 
+    quantities that depend strictly on wavelength `λ` and are invariant to 
+    temperature `T` (i.e., gray-bodies or static spectral filters).
+
+    Since the quantity is temperature-independent, its first and second temperature 
+    derivatives are automatically evaluated as exact zeros.
+
+    # Fields
+    * `f`: Base spectral function of the form `f(λ)`.
+
+    # Example
+    ```julia
+    using PlanckFunctions
+
+    # Define a static wavelength-dependent spectral emissivity vector or function
+    ε_static(λ) = 0.8 + 0.05 * sin(λ)
+
+    # Wrap into the isothermal interface
+    quantity = IsothermalSpectralQuantity(ε_static)
+
+    # Calling the internal derivative interface returns exact zeros for gradients
+    val, ∇ₜval, ∇²ₜval = PlanckFunctions.eval_Dₜ(quantity, 1.5, 1500.0)
+    # Returns: (val, 0.0, 0.0)
+    ```
+"""
+    struct IsothermalSpectralQuantity{F} <: AbstractSpectralQuantity
+        f::F 
+    end
+    """
+    DₜAbstractSpectralQuantityWrapper(q)
+
+    A lazy functional wrapper that transforms any [`AbstractSpectralQuantity`](@ref) 
+    into an active differentiating operator object.
+
+    # Example
+
+    ```julia
+    using PlanckFunctions
+
+    q_base   = AnalyticalSpectralQuantity(ε, dε, ddε)
+    q_tuple  = Dₜ(q_base) # Generates a DₜAbstractSpectralQuantityWrapper
+
+    # Calling the wrapper returns the full Leibniz analytical layer
+    val, dval, d2val = q_tuple(1.5, 1500.0)
+    ```
+
+    """
+    struct  DₜAbstractSpectralQuantityWrapper{T}
+        q::T
+    end
+    (dq::DₜAbstractSpectralQuantityWrapper)(λ , T) =  eval_Dₜ(dq.q , λ, T)
+    (q::AbstractSpectralQuantity)(λ, T) = q.f(λ, T)
+
+    ∇ₜ(q::AnalyticalSpectralQuantity) = q.df
+    ∇²ₜ(q::AnalyticalSpectralQuantity) = q.ddf
+    Dₜ(q::T) where T<: AbstractSpectralQuantity = DₜAbstractSpectralQuantityWrapper{T}(q)
+    eval_Dₜ(q::AnalyticalSpectralQuantity , λ, T) = (q.f(λ, T) , q.df(λ, T) , q.ddf(λ, T))
+
+    
+
+    (q::IsothermalSpectralQuantity)(λ, _) = q.f(λ)
+    eval_Dₜ(q::IsothermalSpectralQuantity, λ, _) =begin 
+        val = q.f(λ)
+        return   (val , zero(typeof(val)), zero(typeof(val)))
+    end
+
+
+
+# Planck weighted ratio implementation for AbstractSpectralQuantity
+    """
+    planck_weighted_ratio(
+                        α::AbstractSpectralQuantity, 
+                        band1::NTuple{2}, 
+                        band2::NTuple{2},
+                        T::D) where { D <: Number}
+
+Evaluates the ratio of planck_weighted quantity `α` integrated over two 
+bands `band1` and `band2` at temperature T:
+
+`R(T) = ∫α(λ)ibb(λ,T)dλ1 / ∫α(λ)ibb(λ,T)dλ2`
+
+# Arguments
+* `α`: An `AbstractSpectralQuantity` (e.g., analytical or autodiff emissivity).
+* `band1`: Tuple `(λ_min, λ_max)` for the first spectral band (numerator), μm.
+* `band2`: Tuple `(λ_min, λ_max)` for the second spectral band (denominator), μm.
+* `T`: Temperature, K.
+"""
+function planck_weighted_ratio(
+                        α::AbstractSpectralQuantity, 
+                        band1::NTuple{2}, 
+                        band2::NTuple{2},
+                        T::D) where { D <: Number}
+        return planck_weighted(α , band1[1] , band1[2] , T )/planck_weighted(α , band2[1] , band2[2] , T)
+    end
+
+    """
+        ∇ₜplanck_weighted_ratio(
+                        α::AbstractSpectralQuantity, 
+                        band1::NTuple{2}, 
+                        band2::NTuple{2},
+                        T::D) where { D <: Number}
+
+Returns the ratio of two weighted values  `d/dT [ ∫α(λ)ibb(λ,T)dλ1 / ∫α(λ)ibb(λ,T)dλ2]`
+
+# Arguments
+* `α`: An `AbstractSpectralQuantity` (e.g., analytical or autodiff emissivity).
+* `band1`: Tuple `(λ_min, λ_max)` for the first spectral band (numerator), μm.
+* `band2`: Tuple `(λ_min, λ_max)` for the second spectral band (denominator), μm.
+* `T`: Temperature, K.
+    """
+    function ∇ₜplanck_weighted_ratio(
+                        α::AbstractSpectralQuantity, 
+                        band1::NTuple{2}, 
+                        band2::NTuple{2},
+                        T::D) where { D <: Number}
+
+        (f1 , df1 , _ ) = Dₜplanck_weighted(α , band1[1] , band1[2] , T )
+        (f2 , df2 , _ ) = Dₜplanck_weighted(α , band2[1] , band2[2] , T )
+
+        return _spectral_ratio_first_derivative(f1 , df1 , f2 , df2)
+    end
+    """
+        ∇²ₜplanck_weighted_ratio(
+                            α::AbstractSpectralQuantity, 
+                            band1::NTuple{2}, 
+                            band2::NTuple{2},
+                            T::D) where { D <: Number}
+
+Returns the ratio of two weighted values  `d²/dT² [ (∫α1(λ)ibb(λ,T)dλ1 / ∫α2(λ)ibb(λ,T)dλ2) ]`
+# Arguments
+* `α`: An `AbstractSpectralQuantity` (e.g., analytical or autodiff emissivity).
+* `band1`: Tuple `(λ_min, λ_max)` for the first spectral band (numerator), μm.
+* `band2`: Tuple `(λ_min, λ_max)` for the second spectral band (denominator), μm.
+* `T`: Temperature, K.
+    """
+    function ∇²ₜplanck_weighted_ratio(
+                        α::AbstractSpectralQuantity, 
+                        band1::NTuple{2}, 
+                        band2::NTuple{2},
+                        T::D) where { D <: Number}
+
+        (f1 , df1 , d2f1 ) = Dₜplanck_weighted(α , band1[1] , band1[2] , T )
+        (f2 , df2 , d2f2 ) = Dₜplanck_weighted(α , band2[1] , band2[2] , T )
+        return _spectral_ratio_second_derivative(f1 , df1 , d2f1 , f2 , df2 , d2f2)
+    end
+    """
+        Dₜplanck_weighted_ratio(
+                                α::AbstractSpectralQuantity, 
+                                band1::NTuple{2}, 
+                                band2::NTuple{2},
+                                T::D) where { D <: Number}
+
+    Returns the tuple of the value, first and second derivatives of two weighted values ratio :
+
+# Returns
+`( 
+   ∫α(λ)ibb(λ,T)dλ1 / ∫α(λ)ibb(λ,T)dλ2, 
+
+   d/dT [ (∫α(λ)ibb(λ,T)dλ1 / ∫α(λ)ibb(λ,T)dλ2) ] , 
+
+   d²/dT² [ (∫α(λ)ibb(λ,T)dλ1 / ∫α(λ)ibb(λ,T)dλ2) ]
+)`
+
+# Arguments
+* `α`: An `AbstractSpectralQuantity` (e.g., analytical or autodiff emissivity).
+* `band1`: Tuple `(λ_min, λ_max)` for the first spectral band (numerator), μm.
+* `band2`: Tuple `(λ_min, λ_max)` for the second spectral band (denominator), μm.
+* `T`: Temperature, K.
+    """
+    function Dₜplanck_weighted_ratio( 
+                                    α::AbstractSpectralQuantity, 
+                                    band1::NTuple{2}, 
+                                    band2::NTuple{2},
+                                    T::D) where { D <: Number}
+
+        (f1 , df1 , d2f1 ) = Dₜplanck_weighted(α , band1[1] , band1[2] , T )
+        (f2 , df2 , d2f2 ) = Dₜplanck_weighted(α , band2[1] , band2[2] , T )
+
+        return (    
+                    f1/f2 ,
+                    _spectral_ratio_first_derivative(f1 , df1 , f2 , df2) , 
+                    _spectral_ratio_second_derivative(f1, df1, d2f1,
+                                                                f2, df2, d2f2)
+            )
+
+    end
+    const TwoArgsFunctions = Union{Dfunctions , typeof(∇ₗibb) , typeof(∇²ₗibb)}
+    const RatioFunctions = Union{typeof(spectral_ratio), typeof(∇ₜspectral_ratio), typeof(∇²ₜspectral_ratio)}
+    const BandIntegrationFunctions = Union{typeof(band_power), typeof(∇ₜband_power), typeof(∇²ₜband_power)}
 end
 
 

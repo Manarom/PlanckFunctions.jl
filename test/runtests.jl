@@ -1,6 +1,6 @@
 import  PlanckFunctions as PF
 using Test #,LinearAlgebra,Statistics
-using ForwardDiff , QuadGK , ChainRulesCore
+using ForwardDiff , QuadGK , ChainRulesCore , StaticArrays
 include(joinpath(@__DIR__,"tests data","TestingData.jl")) # TestingData.benchmark_data
 #=
 temperature # Kelvins
@@ -184,7 +184,33 @@ d2fdx2(f,x) = dfdx(t->dfdx(f,t) , x)
             D_PF = PF.Dₜplanck_weighted_ratio(a1 , l1 , a2 , l2 , T )
             @test all( (≈).(D_FD , D_PF , rtol =1e-4) )
         println("ok")
+        print("testing function integration ...")     
+            a(l , t) = 0.5 + 0.1*l + 1e-3*t  + 1e-6*t^2
+            da(l , t) = 1e-3 + 2e-6*t
+            dda(l , t) = 2e-6
+            a_ad = PF.AnalyticalSpectralQuantity(a , da , dda)
+            # function value 
+            int_num_a = first(quadgk(l->a(l , T)*PF.ibb(l , T) , 2.0 , 3.0))
+            int_a_pl = PF.planck_weighted(a_ad , 2.0 , 3.0 , T)
 
+            #first derivative 
+            first_der(l) = a(l , T)*PF.∇ₜibb(l , T)  + da(l , T) * PF.ibb(l , T)
+            d_int_num_a = first(quadgk(first_der, 2.0 , 3.0))
+            d_int_a_pl = PF.∇ₜplanck_weighted(a_ad , 2.0 , 3.0 , T)
+
+            #second derivaitve
+            second_der(l) =  a(l , T)*PF.∇²ₜibb(l , T)  + 2da(l , T) * PF.∇ₜibb(l , T) + dda(l , T) * PF.ibb(l , T) 
+            dd_int_num_a = first(quadgk(second_der, 2.0 , 3.0))
+            dd_int_a_pl = PF.∇²ₜplanck_weighted(a_ad , 2.0 , 3.0 , T)
+
+            @test int_num_a ≈ int_a_pl
+            @test d_int_a_pl ≈ d_int_num_a
+            @test dd_int_a_pl ≈ dd_int_num_a
+
+            dd_tup = PF.Dₜplanck_weighted(a_ad , 2.0 , 3.0 , T)
+            @test all( (int_num_a , d_int_num_a , dd_int_num_a) .≈ dd_tup )
+
+        println("ok")
         print("testing based on externally provided data ... ") 
 
             λₗ = point.lower #lower wavelength

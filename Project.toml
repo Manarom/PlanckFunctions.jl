@@ -3,8 +3,22 @@ uuid = "56edaee7-e77f-43d7-994d-8307b8de0a62"
 version = "1.1.4"
 authors = ["Roman Mironov"]
 
+[workspace]
+projects = ["docs"]
+
 [deps]
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+
+
+[weakdeps]
+QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
+Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[extensions]
+
+PlanckSymbolicsExt = "Symbolics"
+PlanckQuadGKExt = ["QuadGK" , "StaticArrays"]
 
 [compat]
 ChainRulesCore = "1.26"
@@ -15,15 +29,7 @@ DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [targets]
-test = ["Test", "ForwardDiff", "DelimitedFiles", "QuadGK"]
-
-[workspace]
-projects = ["docs"]
-
-[extensions]
-PlanckSymbolicsExt = "Symbolics"
-
-[weakdeps]
-Symbolics  = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+test = ["Test", "ForwardDiff", "DelimitedFiles", "QuadGK" , "StaticArrays"]

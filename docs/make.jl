@@ -18,7 +18,7 @@ makedocs(
             "Examples" => "pluto_tests_git.md"
         ],
         "Modules" => [
-            "PlanckFunctions" => "PlanckFunctions.md",
+            "API" => "PlanckFunctions.md",
             "TestingData" => "TestingData.md"
         ] 
     ]

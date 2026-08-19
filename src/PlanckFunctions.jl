@@ -17,9 +17,8 @@ and temperature (T), optimized for high-performance physics and pyrometry calcul
 * **Combined Evaluation**: 
   Functions prefixed with `Dₜ` (e.g., `Dₜfoo`) evaluate the base value, the first derivative, and the second derivative simultaneously, returning them as a single `Tuple` to prevent redundant calculations.
 * **Functional Operators**: 
-  The symbols `∇ₜ` and `∇²ₜ` can be used directly as operators on functions, mapping a base function to its corresponding derivative function (e.g., `PlanckFunctions.∇ₜ(PlanckFunctions.ibb) -> ∇ₜibb`).
-  The symbol `∫ₗ` applied on function mapps it to its wavelength integrator , e.g. 
-    
+  The symbols `∇ₜ` ,`Dₜ` and `∇²ₜ` can be used directly as operators on functions, mapping a base function to its corresponding derivative function (e.g., `PlanckFunctions.∇ₜ(PlanckFunctions.ibb) -> ∇ₜibb`).
+  The symbol `∫ₗ` applied on function maps it to its wavelength integrator 
     
 
 ### Physical Units
@@ -62,6 +61,10 @@ or by applying the [`∫ₗ`](@ref) [`∫ₗ`](@ref) operator
 #### Discrete/Tabular Integration (Experimental Data Pyrometry)
 * [`planck_weighted`](@ref), [`∇ₜplanck_weighted`](@ref), [`∇²ₜplanck_weighted`](@ref), [`Dₜplanck_weighted`](@ref): Integrates a discrete, wavelength-dependent experimental quantity (such as emissivity or detector response) weighted by the Planck function and its derivatives.
 * [`planck_weighted_ratio`](@ref), [`∇ₜplanck_weighted_ratio`](@ref), [`∇²ₜplanck_weighted_ratio`](@ref), [`Dₜplanck_weighted_ratio`](@ref): Computes the ratio of two independent Planck-weighted discrete quantities and its analytical temperature derivatives.
+
+#### Operators 
+* []
+
 """
 module PlanckFunctions
     using ChainRulesCore
@@ -88,7 +91,7 @@ module PlanckFunctions
 
             planck_averaged, planck_averaged_attenuation, rosseland_averaged_attenuation,
             weighted_average,
-            weighted_value , ∫ₗ , ∇ₜ , ∇²ₜ  
+            weighted_value , ∫ₗ , ∇ₜ , ∇²ₜ   , Dₜ
 
 
     const citation = "J.R.Howell,M.P.Menguc,J.R.Howell,M.P.Menguc,K.Daun,R.Siegel. Thermal radiation heat transfer. Seventh edition. 2021 " 
@@ -1979,10 +1982,12 @@ function _spectral_ratio_second_derivative(
         f_orig  = Symbol(f)         #  :ibb
         f_deriv = Symbol("∇ₜ", f)    #  :∇ₜibb
         f_sec   = Symbol("∇²ₜ", f)   #  :∇²ₜibb
+        D_f = Symbol("Dₜ", f) 
         @eval begin
             ∇ₜ(::typeof($f_orig)) = $f_deriv
             ∇²ₜ(::typeof($f_orig)) = $f_sec
             ∇ₜ(::typeof($f_deriv)) = $f_sec
+            Dₜ(::typeof($f_orig)) = $D_f
         end
     end
     ∫ₗ(::typeof(ibb)) = power
@@ -2035,6 +2040,9 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
     [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
     and their derivatives e.g [`∇ₜband_power`](@ref) etc.
 
+        Must be implemented on user defined [`AbstractSpectralQuatity`](@ref) interface to perform 
+    fast continuous function weighting derivatives evaluation 
+
     # Examples
     ```julia
     ∇ₜ(ibb)        # -> ∇ₜibb
@@ -2046,9 +2054,13 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
       """
         ∇²ₜ(f) 
 
-        Differentiation operator returns the derivatives of function
+        Differentiation operator returns the second derivatives of function
     [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
-    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref)
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref) , 
+    [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
+
+        Must be implemented on user defined [`AbstractSpectralQuatity`](@ref) interface to perform 
+    fast continuous function weighting derivatives evaluation 
 
     # Examples
     ```julia
@@ -2056,7 +2068,27 @@ f(1273.5) # returns the value of Planck function integrated over 2.3 - 4.5 spect
      ∇²ₜ(band_power)   # ->  ∇²ₜband_power
     ```
     """  
-    function ∇²ₜ end        
+    function ∇²ₜ end     
+       """
+        Dₜ(f) 
+
+        Differentiation operator returns the tuple of :
+    (value of base function, its first derivative , its second derivative)
+    
+    [`ibb`](@ref) , [`band_power`](@ref) , [`power`](@ref) ,
+    [`spectral_ratio`](@ref) , [`spectral_band_ratio`](@ref) , 
+    [`planck_weighted`](@ref),[`planck_weighted_ratio`](@ref)
+
+        Must be implemented on user defined [`AbstractSpectralQuatity`](@ref) interface to perform 
+    fast continuous function weighting derivatives evaluation 
+
+    # Examples
+    ```julia
+     Dₜ(ibb)          # -> Dₜibb
+     Dₜ(planck_weighted)   # ->  Dₜplanck_weighted
+    ```
+    """       
+    function Dₜ end 
     """
     ∫ₗ(g)
     ∫ₗ(g, λ₁, λ₂)

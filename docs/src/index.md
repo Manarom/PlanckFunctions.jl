@@ -127,5 +127,25 @@ ibb_sym = symbolize(ibb) # Returns the symbolic representation of the Planck fun
 # Easily differentiate or simplify symbolic equations
 dI_sym = Symbolics.derivative(ibb_sym, T)
 ```
+### 4. Continuous Integration & Leibniz Differentiation (QuadGK Extension)
+When `QuadGK.jl` and `StaticArrays.jl` are loaded, an extension is automatically triggered to support high-accuracy continuous spectrum integration. 
 
+```julia
+using PlanckFunctions
+using QuadGK, StaticArrays # Automatically activates the extension
+
+# Define an analytical temperature-dependent emissivity property
+ε(λ, T)   = 0.7 + 0.05 * λ + 1.2e-4 * T
+dε(λ, T)  = 1.2e-4
+ddε(λ, T) = 0.0
+
+q = AnalyticalSpectralQuantity(ε, dε, ddε)
+
+# Evaluate value, 1st and 2nd derivatives simultaneously on a band interval
+# Ideal for zero-allocation root-finding solvers (e.g., Halley's method)
+val, d1, d2 = Dₜplanck_weighted(q, 1.0, 1.6, 1450.0)
+
+# Also supports multi-band ratios for ratio pyrometry
+ratio_tuple = Dₜplanck_weighted_ratio(q, (1.0, 1.2), (1.4, 1.6), 1450.0)
+```
 

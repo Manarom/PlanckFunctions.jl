@@ -22,10 +22,10 @@ Engineered specifically for optical physics, radiative heat transfer, and radiat
 ## Physical Units
 
 To ensure consistency across physical domains, the package strictly adheres to the following unit convention:
-* **Wavelength (``\lambda``)**: Microns (``\mu\text{m}``)
-* **Temperature (``T``)**: Kelvins (``\text{K}``)
-* **Spectral Intensity (``I_{\lambda}``)**: Watts per square meter per steradian per micron (``\text{W}/(\text{m}^2\cdot\text{sr}\cdot\mu\text{m})``)
-* **Total / Band Power (``P``)**: Watts per square meter per steradian (``\text{W}/(\text{m}^2\cdot\text{sr})``)
+* **Wavelength (``\lambda``)**: Microns (`μm`)
+* **Temperature (``T``)**: Kelvins (`K`)
+* **Spectral Intensity (``I_{\lambda}``)**: Watts per square meter per steradian per micron (`W/m²⋅sr⋅μm`)
+* **Total / Band Power (``P``)**: Watts per square meter per steradian (``W/m²⋅sr``)
 
 ---
 
@@ -50,7 +50,7 @@ val, dval, d2val = Dₜibb(λ, T)
 ```
 
 ### 2. Functional Differentiating Operators (`∇ₜ`, `∇²ₜ`, `∇ₗ`, `∇²ₗ`)
-Instead of manually typing specific derivative function names, you can use high-level differentiating operators directly as functional mappings. This capability extends natively to temperature derivatives across the entire package ecosystem, as well as wavelength derivatives for core spectral functions.
+Instead of manually typing specific derivative function names, you can use high-level differentiating operators directly as functional mappings.
 
 ```julia
 using PlanckFunctions
@@ -123,15 +123,37 @@ When `Symbolics.jl` is loaded, `PlanckFunctions.jl` automatically activates a pa
 
 ```julia
 using Symbolics, PlanckFunctions
-
-ibb_sym = symbolize(ibb) # Returns the symbolic representation of the Planck function
-
+Symbolics.@variables λ T λ1 λ2
+d2I_sym = symbolize(∇²ₜibb , λ, T) # Returns the symbolic representation of the Planck function second derivative
 # Easily differentiate or simplify symbolic equations
-dI_sym = Symbolics.derivative(ibb_sym, T)
+d3I_sym = Symbolics.derivative(d2I_sym , T) # returns the third derivaitve 
+d3I_numeric = build_function(d3I_sym, λ, T; expression=false) 
+val = d3I_numeric(2.0, 1500.0) 
+```
+
+### 4. Continuous Integration & Leibniz Differentiation (QuadGK Extension)
+When `QuadGK.jl` and `StaticArrays.jl` are loaded, an extension is automatically triggered to support high-accuracy continuous spectrum integration. 
+
+```julia
+using PlanckFunctions
+using QuadGK, StaticArrays # Automatically activates the extension
+
+# Define an analytical temperature-dependent emissivity property
+ε(λ, T)   = 0.7 + 0.05 * λ + 1.2e-4 * T
+dε(λ, T)  = 1.2e-4
+ddε(λ, T) = 0.0
+
+q = AnalyticalSpectralQuantity(ε, dε, ddε)
+
+# Evaluate value, 1st and 2nd derivatives simultaneously on a band interval
+# Ideal for zero-allocation root-finding solvers (e.g., Halley's method)
+val, d1, d2 = Dₜplanck_weighted(q, 1.0, 1.6, 1450.0)
+
+# Also supports multi-band ratios for ratio pyrometry
+ratio_tuple = Dₜplanck_weighted_ratio(q, (1.0, 1.2), (1.4, 1.6), 1450.0)
 ```
 
 ---
-
 ## Documentation
 
 Full documentation, including mathematical derivations, pyrometry-specific examples, performance benchmarks, and detailed API documentation, is available at the [Documentation Hub](https://manarom.github.io/PlanckFunctions.jl/).

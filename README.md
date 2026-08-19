@@ -22,10 +22,10 @@ Engineered specifically for optical physics, radiative heat transfer, and radiat
 ## Physical Units
 
 To ensure consistency across physical domains, the package strictly adheres to the following unit convention:
-* **Wavelength (``\lambda``)**: Microns (`μm`)
-* **Temperature (``T``)**: Kelvins (`K`)
-* **Spectral Intensity (``I_{\lambda}``)**: Watts per square meter per steradian per micron (`W/m²⋅sr⋅μm`)
-* **Total / Band Power (``P``)**: Watts per square meter per steradian (``W/m²⋅sr``)
+* **Wavelength**: Microns (`μm`)
+* **Temperature**: Kelvins (`K`)
+* **Spectral Intensity**: Watts per square meter per steradian per micron (`W/m²⋅sr⋅μm`)
+* **Total / Band Power**: Watts per square meter per steradian (``W/m²⋅sr``)
 
 ---
 

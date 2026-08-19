@@ -63,7 +63,8 @@ or by applying the [`∫ₗ`](@ref) [`∫ₗ`](@ref) operator
 * [`planck_weighted_ratio`](@ref), [`∇ₜplanck_weighted_ratio`](@ref), [`∇²ₜplanck_weighted_ratio`](@ref), [`Dₜplanck_weighted_ratio`](@ref): Computes the ratio of two independent Planck-weighted discrete quantities and its analytical temperature derivatives.
 
 #### Operators 
-* []
+* [`∫ₗ`](@ref) : Integration 
+* [`∇ₜ`](@ref) , [`∇²ₜ`](@ref) : Differentiation
 
 """
 module PlanckFunctions
